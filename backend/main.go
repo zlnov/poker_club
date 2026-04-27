@@ -11,6 +11,8 @@ import (
 	"poker-club-backend/presentation/middleware"
 
 	"github.com/gin-gonic/gin"
+
+	"poker-club-backend/bot"
 )
 
 func main() {
@@ -53,6 +55,24 @@ func main() {
 	// Initialize use cases
 	clubUseCase := usecases.NewClubUseCase(clubService)
 	gameUseCase := usecases.NewGameUseCase(gameService)
+
+	// Initialize bot use case (combining game and register usecases)
+	registerUseCase := usecases.NewRegisterPlayerUseCase(playerRepo)
+	botUseCase := &usecases.BotUseCaseImpl{GameUseCase: gameUseCase, RegisterUseCase: registerUseCase}
+
+	// Initialize Telegram bot
+	bot, err := bot.NewBot(botUseCase, "/webhook")
+	if err != nil {
+		log.Fatalf("Failed to create bot: %v", err)
+	}
+
+	// Start Telegram webhook server in a separate goroutine
+	go func() {
+		log.Println("Starting Telegram webhook server on :8081")
+		if err := bot.ServeWebhook(":8081"); err != nil {
+			log.Fatalf("Failed to start webhook server: %v", err)
+		}
+	}()
 
 	// Initialize JWT service
 	jwtService := services.NewJWTService(
