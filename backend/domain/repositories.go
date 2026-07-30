@@ -23,6 +23,13 @@ type PlayerRepository interface {
 	Delete(ctx context.Context, id int64) error
 }
 
+// ChatClubRepository handles mapping between Telegram chat IDs and club IDs.
+type ChatClubRepository interface {
+	Create(ctx context.Context, cc *ChatClub) error
+	GetByChatID(ctx context.Context, chatID int64) (*ChatClub, error)
+	Delete(ctx context.Context, id int64) error
+}
+
 // ClubMemberRepository interface for club member persistence
 type ClubMemberRepository interface {
 	Create(ctx context.Context, member *ClubMember) error
