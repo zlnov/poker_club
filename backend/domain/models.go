@@ -79,3 +79,12 @@ type Event struct {
 	CreatedAt time.Time              `json:"created_at"`
 	CreatedBy int64                  `json:"created_by"`
 }
+
+// ChatClub maps a Telegram chat ID to a club ID
+type ChatClub struct {
+	ID        int64     `json:"id"`
+	ChatID    int64     `json:"chat_id"`
+	ClubID    int64     `json:"club_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

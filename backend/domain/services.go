@@ -14,9 +14,10 @@ var (
 
 // ClubService handles club-related business logic
 type ClubService struct {
-	clubRepo   ClubRepository
-	memberRepo ClubMemberRepository
-	playerRepo PlayerRepository
+	clubRepo     ClubRepository
+	memberRepo   ClubMemberRepository
+	playerRepo   PlayerRepository
+	chatClubRepo ChatClubRepository
 }
 
 // NewClubService creates a new ClubService
@@ -24,11 +25,13 @@ func NewClubService(
 	clubRepo ClubRepository,
 	memberRepo ClubMemberRepository,
 	playerRepo PlayerRepository,
+	chatClubRepo ChatClubRepository,
 ) *ClubService {
 	return &ClubService{
-		clubRepo:   clubRepo,
-		memberRepo: memberRepo,
-		playerRepo: playerRepo,
+		clubRepo:     clubRepo,
+		memberRepo:   memberRepo,
+		playerRepo:   playerRepo,
+		chatClubRepo: chatClubRepo,
 	}
 }
 

@@ -71,6 +71,9 @@ type PlayerDTO struct {
 
 // CreateGameRequest represents request to create a game
 type CreateGameRequest struct {
+	// ChatID is the Telegram chat identifier that initiated the request.
+	// It is used to resolve the club and perform permission checks.
+	ChatID             int64             `json:"chat_id" validate:"required"`
 	ClubID             int64             `json:"club_id" validate:"required"`
 	BankerID           int64             `json:"banker_id" validate:"required"`
 	Type               domain.GameType   `json:"type" validate:"required"`

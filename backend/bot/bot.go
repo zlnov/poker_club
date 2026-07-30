@@ -9,13 +9,14 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"poker-club-backend/application/dtos"
+	"poker-club-backend/application/usecases"
 )
 
 // BotUseCase defines the minimal use‑case methods the bot needs.
+// BotUseCase defines the minimal set of use‑case methods the bot requires.
+// It is implemented by usecases.BotUseCaseImpl.
 type BotUseCase interface {
-	CreateGame(ctx context.Context, req dtos.CreateGameRequest) (*dtos.CreateGameResponse, error)
-	RegisterPlayerForGame(ctx context.Context, gameID int64, playerID int64) error
+	usecases.BotUseCase
 }
 
 // Bot represents a Telegram bot instance.
@@ -81,6 +82,26 @@ type Bot struct {
 	usecase     BotUseCase
 	webhookPath string
 }
+
+// Placeholder handlers for new commands – they will be fleshed out later.
+// func (b *Bot) handleGameMenu(ctx context.Context, msg *Message) {
+// 	b.sendText(msg.Chat.ID, "Game menu not implemented yet")
+// }
+// func (b *Bot) handleRebuy(ctx context.Context, msg *Message) {
+// 	b.sendText(msg.Chat.ID, "Rebuy not implemented yet")
+// }
+// func (b *Bot) handleGameStats(ctx context.Context, msg *Message) {
+// 	b.sendText(msg.Chat.ID, "Game stats not implemented yet")
+// }
+// func (b *Bot) handleFinishGame(ctx context.Context, msg *Message) {
+// 	b.sendText(msg.Chat.ID, "Finish game not implemented yet")
+// }
+// func (b *Bot) handleCancelGame(ctx context.Context, msg *Message) {
+// 	b.sendText(msg.Chat.ID, "Cancel game not implemented yet")
+// }
+// func (b *Bot) handleJoinPlayer(ctx context.Context, msg *Message) {
+// 	b.sendText(msg.Chat.ID, "Join player not implemented yet")
+// }
 
 // NewBot creates a new Bot instance.
 func NewBot(usecase BotUseCase, webhookPath string) (*Bot, error) {
