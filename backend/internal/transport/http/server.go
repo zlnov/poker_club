@@ -38,10 +38,7 @@ func NewServer(cfg *config.Config, svc *service.Service) *Server {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Webhook endpoint placeholder — registered by transport layer
-	router.POST("/webhook", func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	// Webhook endpoint — registered by transport layer via RegisterWebhookHandler
 
 	return &Server{
 		cfg:    cfg,

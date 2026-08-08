@@ -166,6 +166,46 @@ func (r *playerRepository) GetByTgUserID(ctx context.Context, tgUserID int64) (*
 	return &p, nil
 }
 
+func (r *playerRepository) GetByNickname(ctx context.Context, nickname string) (*domain.Player, error) {
+	query := `
+		SELECT id, first_name, last_name, nickname, phone_number, email, password, tg_user_id, last_seen, created_at, updated_at
+		FROM players WHERE nickname = $1
+	`
+	var p domain.Player
+	err := r.db.Pool.QueryRow(ctx, query, nickname).Scan(
+		&p.ID, &p.FirstName, &p.LastName, &p.Nickname,
+		&p.PhoneNumber, &p.Email, &p.Password, &p.TgUserID,
+		&p.LastSeen, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("player not found: nickname=%s", nickname)
+		}
+		return nil, fmt.Errorf("failed to get player: %w", err)
+	}
+	return &p, nil
+}
+
+func (r *playerRepository) GetByID(ctx context.Context, id int64) (*domain.Player, error) {
+	query := `
+		SELECT id, first_name, last_name, nickname, phone_number, email, password, tg_user_id, last_seen, created_at, updated_at
+		FROM players WHERE id = $1
+	`
+	var p domain.Player
+	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
+		&p.ID, &p.FirstName, &p.LastName, &p.Nickname,
+		&p.PhoneNumber, &p.Email, &p.Password, &p.TgUserID,
+		&p.LastSeen, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("player not found: id=%d", id)
+		}
+		return nil, fmt.Errorf("failed to get player: %w", err)
+	}
+	return &p, nil
+}
+
 func (r *playerRepository) UpdateLastSeen(ctx context.Context, id int64) error {
 	query := `UPDATE players SET last_seen = NOW() WHERE id = $1`
 	_, err := r.db.Pool.Exec(ctx, query, id)
@@ -186,13 +226,13 @@ func (r *clubMemberRepository) Ping(ctx context.Context) error {
 
 func (r *clubMemberRepository) Create(ctx context.Context, member *domain.ClubMember) (int64, error) {
 	query := `
-		INSERT INTO club_members (club_id, player_id, role, status)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO club_members (club_id, player_id, role, status, accepted)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 	`
 	var id int64
 	err := r.db.Pool.QueryRow(ctx, query,
-		member.ClubID, member.PlayerID, member.Role, member.Status,
+		member.ClubID, member.PlayerID, member.Role, member.Status, member.Accepted,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create club member: %w", err)
@@ -202,12 +242,12 @@ func (r *clubMemberRepository) Create(ctx context.Context, member *domain.ClubMe
 
 func (r *clubMemberRepository) GetByClubAndPlayer(ctx context.Context, clubID, playerID int64) (*domain.ClubMember, error) {
 	query := `
-		SELECT id, club_id, player_id, role, status, created_at, updated_at
+		SELECT id, club_id, player_id, role, status, accepted, created_at, updated_at
 		FROM club_members WHERE club_id = $1 AND player_id = $2
 	`
 	var m domain.ClubMember
 	err := r.db.Pool.QueryRow(ctx, query, clubID, playerID).Scan(
-		&m.ID, &m.ClubID, &m.PlayerID, &m.Role, &m.Status,
+		&m.ID, &m.ClubID, &m.PlayerID, &m.Role, &m.Status, &m.Accepted,
 		&m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
@@ -217,6 +257,74 @@ func (r *clubMemberRepository) GetByClubAndPlayer(ctx context.Context, clubID, p
 		return nil, fmt.Errorf("failed to get club member: %w", err)
 	}
 	return &m, nil
+}
+
+func (r *clubMemberRepository) GetByClubWithPlayers(ctx context.Context, clubID int64) ([]*domain.ClubMemberWithPlayer, error) {
+	query := `
+		SELECT cm.id, cm.club_id, cm.player_id, cm.role, cm.status, cm.accepted, cm.created_at, cm.updated_at,
+		       p.id, p.first_name, p.last_name, p.nickname, p.phone_number, p.email, p.password, p.tg_user_id, p.last_seen, p.created_at, p.updated_at
+		FROM club_members cm
+		JOIN players p ON p.id = cm.player_id
+		WHERE cm.club_id = $1
+		ORDER BY cm.created_at ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get club members: %w", err)
+	}
+	defer rows.Close()
+
+	var members []*domain.ClubMemberWithPlayer
+	for rows.Next() {
+		var cmp domain.ClubMemberWithPlayer
+		if err := rows.Scan(
+			&cmp.ID, &cmp.ClubID, &cmp.PlayerID, &cmp.Role, &cmp.Status, &cmp.Accepted,
+			&cmp.CreatedAt, &cmp.UpdatedAt,
+			&cmp.Player.ID, &cmp.Player.FirstName, &cmp.Player.LastName, &cmp.Player.Nickname,
+			&cmp.Player.PhoneNumber, &cmp.Player.Email, &cmp.Player.Password, &cmp.Player.TgUserID,
+			&cmp.Player.LastSeen, &cmp.Player.CreatedAt, &cmp.Player.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan club member: %w", err)
+		}
+		members = append(members, &cmp)
+	}
+	return members, nil
+}
+
+func (r *clubMemberRepository) UpdateRole(ctx context.Context, clubID, playerID int64, role string) error {
+	query := `UPDATE club_members SET role = $1 WHERE club_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, role, clubID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to update member role: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("club member not found: club_id=%d, player_id=%d", clubID, playerID)
+	}
+	return nil
+}
+
+func (r *clubMemberRepository) UpdateStatus(ctx context.Context, clubID, playerID int64, status string) error {
+	query := `UPDATE club_members SET status = $1 WHERE club_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, status, clubID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to update member status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("club member not found: club_id=%d, player_id=%d", clubID, playerID)
+	}
+	return nil
+}
+
+func (r *clubMemberRepository) UpdateAccepted(ctx context.Context, clubID, playerID int64, accepted bool) error {
+	query := `UPDATE club_members SET accepted = $1 WHERE club_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, accepted, clubID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to update member accepted: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("club member not found: club_id=%d, player_id=%d", clubID, playerID)
+	}
+	return nil
 }
 
 // gameRepository implements domain.GameRepository.

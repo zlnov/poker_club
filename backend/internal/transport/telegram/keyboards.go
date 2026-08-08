@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"poker-club/backend/internal/domain"
 )
 
 // callback data constants
@@ -20,6 +22,20 @@ const (
 	cbBackMain     = "back_main"
 	cbBackClubs    = "back_clubs"
 	cbBindSelect   = "bind_select"
+
+	// Phase 02: club member management
+	cbInviteMember    = "invite_member"
+	cbListMembers     = "list_members"
+	cbMemberAction    = "member_action"
+	cbAcceptInvite    = "accept_invite"
+	cbRejectInvite    = "reject_invite"
+	cbConfirmEntry    = "confirm_entry"
+	cbAssignAdmin     = "assign_admin"
+	cbRemoveAdmin     = "remove_admin"
+	cbBanMember       = "ban_member"
+	cbUnbanMember     = "unban_member"
+	cbKickMember      = "kick_member"
+	cbBackMembers     = "back_members"
 )
 
 // stateAction constants for user input state
@@ -28,6 +44,7 @@ const (
 	stateCreateClub   = "create_club"
 	stateChangeName   = "change_name"
 	stateCloseConfirm = "close_confirm"
+	stateInviteMember = "invite_member"
 )
 
 // mainMenuKeyboardMarkup returns the inline keyboard for the main menu.
@@ -56,25 +73,6 @@ func clubListKeyboard(clubs []clubListItem) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
-// clubMenuKeyboard returns the inline keyboard for a club's action menu.
-func clubMenuKeyboard(clubID int64) tgbotapi.InlineKeyboardMarkup {
-	id := strconv.FormatInt(clubID, 10)
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s", cbClubInfo, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Закрыть клуб", fmt.Sprintf("%s:%s", cbCloseClub, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackMain),
-		),
-	)
-}
-
 // confirmCloseKeyboard returns a Yes/No inline keyboard for club deletion confirmation.
 func confirmCloseKeyboard(clubID int64) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)
@@ -101,4 +99,163 @@ func bindClubSelectKeyboard(clubs []clubListItem, tgChatID int64) tgbotapi.Inlin
 		))
 	}
 	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// clubMenuKeyboardWithMembers returns the club menu with member management buttons.
+func clubMenuKeyboardWithMembers(clubID int64) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s", cbClubInfo, id)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Закрыть клуб", fmt.Sprintf("%s:%s", cbCloseClub, id)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackMain),
+		),
+	)
+}
+
+// memberListKeyboard builds an inline keyboard listing club members for selection.
+func memberListKeyboard(clubID int64, members []*domain.ClubMemberWithPlayer) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(members)+1)
+	for _, m := range members {
+		label := memberLabel(m)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%d:%d", cbMemberAction, clubID, m.PlayerID)),
+		))
+	}
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackClubs),
+	))
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// memberLabel returns a short label for a member in the list.
+func memberLabel(m *domain.ClubMemberWithPlayer) string {
+	name := m.Player.FirstName
+	if m.Player.LastName != "" {
+		name += " " + m.Player.LastName
+	}
+	if m.Player.Nickname != "" && m.Player.Nickname != m.Player.FirstName {
+		name += " (@" + m.Player.Nickname + ")"
+	}
+	return fmt.Sprintf("%s [%s, %s]", name, roleLabel(m.Role), statusLabel(m.Status))
+}
+
+func roleLabel(role string) string {
+	switch role {
+	case "owner":
+		return "владелец"
+	case "admin":
+		return "админ"
+	case "member":
+		return "участник"
+	default:
+		return role
+	}
+}
+
+func statusLabel(status string) string {
+	switch status {
+	case "pending":
+		return "pending"
+	case "active":
+		return "active"
+	case "banned":
+		return "banned"
+	case "left":
+		return "left"
+	default:
+		return status
+	}
+}
+
+// memberActionKeyboard builds an inline keyboard for managing a specific member.
+// userRole determines which action buttons are shown (owner sees all, admin sees
+// management actions, member sees none).
+func memberActionKeyboard(clubID, playerID int64, member *domain.ClubMemberWithPlayer, userRole string) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+	pid := strconv.FormatInt(playerID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 6)
+
+	canManage := userRole == "owner" || userRole == "admin"
+
+	// Confirm entry (only if pending and accepted, owner/admin only)
+	if canManage && member.Status == "pending" && member.Accepted {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Подтвердить вступление", fmt.Sprintf("%s:%s:%s", cbConfirmEntry, id, pid)),
+		))
+	}
+
+	// Assign/Remove admin (owner only)
+	if userRole == "owner" {
+		if member.Role == "member" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Назначить админом", fmt.Sprintf("%s:%s:%s", cbAssignAdmin, id, pid)),
+			))
+		} else if member.Role == "admin" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Снять админа", fmt.Sprintf("%s:%s:%s", cbRemoveAdmin, id, pid)),
+			))
+		}
+	}
+
+	// Ban/Unban (owner/admin)
+	if canManage {
+		if member.Status == "active" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Забанить", fmt.Sprintf("%s:%s:%s", cbBanMember, id, pid)),
+			))
+		} else if member.Status == "banned" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Разбанить", fmt.Sprintf("%s:%s:%s", cbUnbanMember, id, pid)),
+			))
+		}
+	}
+
+	// Kick (change to left) - only for active or banned members (owner/admin)
+	if canManage && (member.Status == "active" || member.Status == "banned") {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Исключить", fmt.Sprintf("%s:%s:%s", cbKickMember, id, pid)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад к списку", fmt.Sprintf("%s:%s", cbBackMembers, id)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// invitationKeyboard returns the Accept/Reject inline keyboard for an invitation message.
+func invitationKeyboard(clubID int64) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Принять", fmt.Sprintf("%s:%s", cbAcceptInvite, id)),
+			tgbotapi.NewInlineKeyboardButtonData("Отклонить", fmt.Sprintf("%s:%s", cbRejectInvite, id)),
+		),
+	)
+}
+
+// confirmEntryKeyboard returns the Confirm inline keyboard for a notification to owner/admin.
+func confirmEntryKeyboard(clubID, playerID int64) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+	pid := strconv.FormatInt(playerID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Подтвердить вступление", fmt.Sprintf("%s:%s:%s", cbConfirmEntry, id, pid)),
+		),
+	)
 }

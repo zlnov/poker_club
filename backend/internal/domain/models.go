@@ -33,8 +33,15 @@ type ClubMember struct {
 	PlayerID  int64
 	Role      string // owner, admin, member
 	Status    string // pending, active, banned, left
+	Accepted  bool   // true when the invited user has accepted the invitation (pending → awaiting confirmation)
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// ClubMemberWithPlayer represents a club member with their associated player info.
+type ClubMemberWithPlayer struct {
+	ClubMember
+	Player Player
 }
 
 // Game represents a poker game session.

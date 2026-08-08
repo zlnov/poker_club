@@ -18,7 +18,9 @@ type ClubRepository interface {
 type PlayerRepository interface {
 	Ping(ctx context.Context) error
 	Create(ctx context.Context, player *Player) (int64, error)
+	GetByID(ctx context.Context, id int64) (*Player, error)
 	GetByTgUserID(ctx context.Context, tgUserID int64) (*Player, error)
+	GetByNickname(ctx context.Context, nickname string) (*Player, error)
 	UpdateLastSeen(ctx context.Context, id int64) error
 }
 
@@ -27,6 +29,10 @@ type ClubMemberRepository interface {
 	Ping(ctx context.Context) error
 	Create(ctx context.Context, member *ClubMember) (int64, error)
 	GetByClubAndPlayer(ctx context.Context, clubID, playerID int64) (*ClubMember, error)
+	GetByClubWithPlayers(ctx context.Context, clubID int64) ([]*ClubMemberWithPlayer, error)
+	UpdateRole(ctx context.Context, clubID, playerID int64, role string) error
+	UpdateStatus(ctx context.Context, clubID, playerID int64, status string) error
+	UpdateAccepted(ctx context.Context, clubID, playerID int64, accepted bool) error
 }
 
 // GameRepository defines operations for game persistence.
