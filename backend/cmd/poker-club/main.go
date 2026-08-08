@@ -48,7 +48,7 @@ func run() error {
 	repos := postgres.NewRepositories(db)
 
 	// Create service
-	svc := service.New(repos)
+	svc := service.New(repos, log)
 
 	// Create HTTP server
 	httpServer := transporthttp.NewServer(cfg, svc)

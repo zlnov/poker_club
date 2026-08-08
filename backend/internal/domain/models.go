@@ -91,21 +91,21 @@ type Event struct {
 
 // PlayerStatistics represents cached aggregate statistics for a player in a club.
 type PlayerStatistics struct {
-	ID                   int64
-	PlayerID             int64
-	ClubID               int64
-	TotalGames           int
-	TotalBuyInAmount     float64
-	TotalRebuyAmount     float64
-	TotalRebuysCount     int
-	TotalInvested        float64
-	TotalChips           float64
-	TotalProfit          float64
-	BiggestWin           float64
-	BiggestLoss          float64
-	GamesWon             int
-	Podiums              int
-	ROI                  float64
-	ITM                  float64
-	UpdatedAt            time.Time
+	ID               int64
+	PlayerID         int64
+	ClubID           int64
+	TotalGames       int
+	TotalBuyInAmount float64
+	TotalRebuyAmount float64
+	TotalRebuysCount int
+	TotalInvested    float64
+	TotalChips       float64
+	TotalProfit      float64
+	BiggestWin       float64
+	BiggestLoss      float64
+	GamesWon         int
+	Podiums          int
+	ROI              float64
+	ITM              float64
+	UpdatedAt        time.Time
 }
