@@ -249,6 +249,19 @@ func invitationKeyboard(clubID int64) tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
+// groupInviteKeyboard returns an inline keyboard with a deep link button that
+// opens a private chat with the bot. The deep link parameter encodes the club ID
+// so the bot can identify which invitation to show.
+func groupInviteKeyboard(clubID int64, botUsername string) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+	deepLink := fmt.Sprintf("https://t.me/%s?start=invite_%s", botUsername, id)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("Принять приглашение", deepLink),
+		),
+	)
+}
+
 // confirmEntryKeyboard returns the Confirm inline keyboard for a notification to owner/admin.
 func confirmEntryKeyboard(clubID, playerID int64) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)

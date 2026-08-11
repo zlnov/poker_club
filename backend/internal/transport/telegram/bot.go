@@ -62,11 +62,61 @@ func (b *Bot) ProcessUpdate(update tgbotapi.Update) {
 
 	// Handle commands and text messages.
 	if update.Message != nil {
+		// Handle new chat members (users added to a group).
+		if len(update.Message.NewChatMembers) > 0 {
+			b.handleNewChatMembers(ctx, update)
+			return
+		}
+
 		if update.Message.IsCommand() {
 			b.handleCommand(ctx, update)
 		} else {
 			b.handleTextMessage(ctx, update)
 		}
+	}
+}
+
+// handleNewChatMembers processes the event when users are added to a Telegram group.
+// It registers or updates each new member as a Player, but only if the group is
+// bound to a club. The bot itself is excluded from registration.
+func (b *Bot) handleNewChatMembers(ctx context.Context, update tgbotapi.Update) {
+	msg := update.Message
+	tgChatID := msg.Chat.ID
+
+	// Determine the club by the group's tg_chat_id.
+	club, err := b.svc.GetClubByTgChatID(ctx, tgChatID)
+	if err != nil {
+		b.log.Warn("group not bound to club", "tg_chat_id", tgChatID, "error", err)
+		b.sendText(msg.Chat.ID, "Эта группа не привязана к клубу. Используйте /bind для привязки.")
+		return
+	}
+
+	// Process each new chat member.
+	for _, member := range msg.NewChatMembers {
+		// Skip the bot itself.
+		if member.ID == b.api.Self.ID {
+			continue
+		}
+
+		firstName := member.FirstName
+		lastName := member.LastName
+		nickname := member.UserName
+		if nickname == "" {
+			nickname = firstName
+		}
+
+		player, err := b.svc.RegisterTelegramUser(ctx, int64(member.ID), firstName, lastName, nickname)
+		if err != nil {
+			b.log.Error("failed to register telegram user from new chat member",
+				"error", err, "tg_user_id", member.ID)
+			continue
+		}
+
+		b.log.Info("new chat member registered",
+			"tg_user_id", member.ID,
+			"player_id", player.ID,
+			"club_id", club.ID,
+		)
 	}
 }
 
@@ -133,7 +183,7 @@ func (b *Bot) sendText(chatID int64, text string) {
 // sendTextWithKeyboard sends a text message with an inline keyboard.
 func (b *Bot) sendTextWithKeyboard(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) {
 	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ReplyMarkup = &keyboard
+	//msg.ReplyMarkup = &keyboard
 	if _, err := b.api.Send(msg); err != nil {
 		b.log.Error("failed to send message", "error", err)
 	}

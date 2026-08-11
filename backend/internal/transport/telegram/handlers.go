@@ -30,13 +30,26 @@ func (b *Bot) handleCommand(ctx context.Context, update tgbotapi.Update) {
 		b.handleStart(ctx, msg)
 	case "/bind":
 		b.handleBind(ctx, msg)
+	case "/invite":
+		b.handleInviteCommand(ctx, msg)
 	default:
 		b.sendText(msg.Chat.ID, "Неизвестная команда. Используйте кнопки меню.")
 	}
 }
 
 // handleStart processes the /start command — shows the main menu.
+// If a deep link parameter is present (e.g. "invite_<club_id>"), it shows the
+// invitation message instead of the main menu. The deep link does NOT create
+// a new Player; it only works with an existing player and club_member.
 func (b *Bot) handleStart(ctx context.Context, msg *tgbotapi.Message) {
+	args := msg.CommandArguments()
+
+	// Deep link: invite_<club_id>
+	if strings.HasPrefix(args, "invite_") {
+		b.handleStartWithInvite(ctx, msg, args)
+		return
+	}
+
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
 	nickname := msg.From.UserName
@@ -53,6 +66,40 @@ func (b *Bot) handleStart(ctx context.Context, msg *tgbotapi.Message) {
 
 	text := fmt.Sprintf("Добро пожаловать, %s!\n\nВыберите действие:", firstName)
 	b.sendTextWithKeyboard(msg.Chat.ID, text, mainMenuKeyboardMarkup())
+}
+
+// handleStartWithInvite processes a /start command with a deep link parameter
+// (e.g. "invite_<club_id>"). It shows the invitation message to the user
+// without creating a new Player.
+func (b *Bot) handleStartWithInvite(ctx context.Context, msg *tgbotapi.Message, args string) {
+	clubID, err := strconv.ParseInt(strings.TrimPrefix(args, "invite_"), 10, 64)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Ошибка: неверная ссылка приглашения.")
+		return
+	}
+
+	// Find the player by tg_user_id — do NOT create a new player.
+	player, err := b.svc.GetPlayerByTgUserID(ctx, msg.From.ID)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Ошибка: ваш профиль не найден. Добавьтесь в группу клуба, чтобы получить приглашение.")
+		return
+	}
+
+	// Find the existing club_member (pending invitation).
+	_, err = b.svc.GetClubMember(ctx, clubID, player.ID)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Приглашение не найдено.")
+		return
+	}
+
+	club, err := b.svc.GetClubInfo(ctx, clubID)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Ошибка при получении информации о клубе.")
+		return
+	}
+
+	inviteText := fmt.Sprintf("Вас приглашают вступить в клуб «%s»", club.Name)
+	b.sendTextWithKeyboard(msg.Chat.ID, inviteText, invitationKeyboard(club.ID))
 }
 
 // handleCallback processes inline keyboard button presses.
@@ -228,7 +275,7 @@ func (b *Bot) handleTextMessage(ctx context.Context, update tgbotapi.Update) {
 	case stateChangeName:
 		b.handleChangeName(ctx, msg, state.clubID)
 	case stateInviteMember:
-		b.handleInviteMember(ctx, msg, state.clubID)
+		b.handleInviteMember(ctx, msg, state.clubID, msg.Text)
 	default:
 		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
 	}
@@ -403,17 +450,73 @@ func (b *Bot) handleBindSelect(ctx context.Context, cb *tgbotapi.CallbackQuery) 
 
 // --- Phase 02: Club member management handlers ---
 
+// handleInviteCommand processes the /invite @username command sent in a group.
+// It determines the club from the chat's tg_chat_id, parses the username from
+// the command arguments, and delegates to handleInviteMember.
+func (b *Bot) handleInviteCommand(ctx context.Context, msg *tgbotapi.Message) {
+	// The command must be sent in a group, not a private chat.
+	if msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
+		b.sendText(msg.Chat.ID, "Команда /invite доступна только в Telegram-группе.")
+		return
+	}
+
+	// Determine the club from the group's tg_chat_id.
+	club, err := b.svc.GetClubByTgChatID(ctx, msg.Chat.ID)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Эта группа не привязана к клубу.")
+		return
+	}
+
+	// Parse the username from the command arguments.
+	username := msg.CommandArguments()
+	b.handleInviteMember(ctx, msg, club.ID, username)
+}
+
 // handleInviteMember processes the text input containing the Telegram username
-// of the user to invite.
-func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clubID int64) {
-	username := strings.TrimSpace(msg.Text)
+// of the user to invite. It verifies that the user is a member of the group
+// via getChatMember, then creates a pending club_member and publishes an
+// invitation message in the group with a deep link button.
+func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clubID int64, username string) {
+	username = strings.TrimSpace(username)
 	username = strings.TrimPrefix(username, "@")
 	if username == "" {
 		b.sendText(msg.Chat.ID, "Username не может быть пустым. Попробуйте снова:")
 		return
 	}
 
-	player, club, err := b.svc.InviteMember(ctx, msg.From.ID, clubID, username)
+	// Look up the player by username (must already be registered in players).
+	player, err := b.svc.GetPlayerByUsername(ctx, username)
+	if err != nil {
+		b.log.Warn("player not found by username", "username", username)
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Пользователь @%s не найден в системе.", username), clubMenuKeyboardWithMembers(clubID))
+		return
+	}
+
+	if player.TgUserID == nil {
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("У пользователя @%s не привязан Telegram ID.", username), clubMenuKeyboardWithMembers(clubID))
+		return
+	}
+
+	// Verify the user is actually a member of this Telegram group via getChatMember.
+	chatMember, err := b.api.GetChatMember(tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: msg.Chat.ID,
+			UserID: *player.TgUserID,
+		},
+	})
+	if err != nil {
+		b.log.Error("failed to check chat member", "error", err, "tg_user_id", *player.TgUserID)
+		b.sendTextWithKeyboard(msg.Chat.ID, "Ошибка при проверке участия пользователя в группе.", clubMenuKeyboardWithMembers(clubID))
+		return
+	}
+
+	if chatMember.HasLeft() || chatMember.WasKicked() {
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Пользователь @%s не является участником этой группы.", username), clubMenuKeyboardWithMembers(clubID))
+		return
+	}
+
+	// Create the club_member with status 'pending' via service.
+	_, club, err := b.svc.InviteMember(ctx, msg.From.ID, clubID, *player.TgUserID)
 	if err != nil {
 		b.log.Warn("failed to invite member", "error", err)
 		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Ошибка: %v", err), clubMenuKeyboardWithMembers(clubID))
@@ -422,16 +525,11 @@ func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clu
 
 	b.setState(msg.From.ID, stateIdle, 0)
 
-	// Send invitation message to the invited user.
-	if player.TgUserID != nil {
-		inviteText := fmt.Sprintf(
-			"Вас пригласили в клуб «%s» (ID: %d).\n\nНажмите «Принять» для подтверждения участия или «Отклонить» для отказа.",
-			club.Name, club.ID,
-		)
-		b.sendTextWithKeyboard(*player.TgUserID, inviteText, invitationKeyboard(club.ID))
-	}
+	// Publish invitation message in the group with a deep link button.
+	inviteText := fmt.Sprintf("Приглашение в клуб «%s» для @%s.\nНажмите кнопку, чтобы перейти в личный чат с ботом.", club.Name, username)
+	b.sendTextWithKeyboard(msg.Chat.ID, inviteText, groupInviteKeyboard(club.ID, b.api.Self.UserName))
 
-	b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Приглашение отправлено пользователю @%s.", username), clubMenuKeyboardWithMembers(clubID))
+	b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Приглашение опубликовано для @%s.", username), clubMenuKeyboardWithMembers(clubID))
 }
 
 // showClubMembers displays the list of club members.

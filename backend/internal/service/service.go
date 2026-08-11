@@ -215,11 +215,11 @@ func (s *Service) CloseClub(ctx context.Context, tgUserID int64, clubID int64) e
 	return nil
 }
 
-// InviteMember invites a player to a club by their Telegram username.
+// InviteMember invites a player to a club by their Telegram user ID.
 // The inviter must be the owner or an admin. The invited player must already
-// have a player record (i.e. have sent /start to the bot). A club_member with
-// status 'pending' and accepted=false is created.
-func (s *Service) InviteMember(ctx context.Context, tgUserID int64, clubID int64, username string) (*domain.Player, *domain.Club, error) {
+// have a player record (i.e. have been registered via NewChatMembers). A
+// club_member with status 'pending' and accepted=false is created.
+func (s *Service) InviteMember(ctx context.Context, tgUserID int64, clubID int64, inviteeTgUserID int64) (*domain.Player, *domain.Club, error) {
 	if err := s.checkPermission(ctx, tgUserID, clubID, PermInviteMember); err != nil {
 		return nil, nil, err
 	}
@@ -229,7 +229,7 @@ func (s *Service) InviteMember(ctx context.Context, tgUserID int64, clubID int64
 		return nil, nil, err
 	}
 
-	player, err := s.repos.Players.GetByNickname(ctx, username)
+	player, err := s.repos.Players.GetByTgUserID(ctx, inviteeTgUserID)
 	if err != nil {
 		return nil, nil, errors.New("пользователь с таким username не найден")
 	}
@@ -255,10 +255,30 @@ func (s *Service) InviteMember(ctx context.Context, tgUserID int64, clubID int64
 		"club_id", clubID,
 		"player_id", player.ID,
 		"inviter_tg_user_id", tgUserID,
-		"invitee_username", username,
+		"invitee_tg_user_id", inviteeTgUserID,
 	)
 
 	return player, club, nil
+}
+
+// GetClubByTgChatID returns the club bound to the given Telegram chat ID.
+func (s *Service) GetClubByTgChatID(ctx context.Context, tgChatID int64) (*domain.Club, error) {
+	return s.repos.Clubs.GetByTgChatID(ctx, tgChatID)
+}
+
+// GetPlayerByUsername returns a player by their Telegram username (nickname).
+func (s *Service) GetPlayerByUsername(ctx context.Context, username string) (*domain.Player, error) {
+	return s.repos.Players.GetByNickname(ctx, username)
+}
+
+// GetPlayerByTgUserID returns a player by their Telegram user ID.
+func (s *Service) GetPlayerByTgUserID(ctx context.Context, tgUserID int64) (*domain.Player, error) {
+	return s.repos.Players.GetByTgUserID(ctx, tgUserID)
+}
+
+// GetClubMember returns the club membership record for a given player and club.
+func (s *Service) GetClubMember(ctx context.Context, clubID, playerID int64) (*domain.ClubMember, error) {
+	return s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, playerID)
 }
 
 // AcceptInvitation allows an invited user to accept an invitation to a club.
