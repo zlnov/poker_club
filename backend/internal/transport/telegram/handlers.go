@@ -130,7 +130,7 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
 			return
 		}
-		b.showClubMenu(chatID, msgID, clubID)
+		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
 
 	case strings.HasPrefix(data, cbClubInfo+":"):
 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbClubInfo+":"), 10, 64)
@@ -138,7 +138,7 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
 			return
 		}
-		b.showClubInfo(ctx, chatID, msgID, clubID)
+		b.showClubInfo(ctx, chatID, msgID, clubID, cb.From.ID)
 
 	case strings.HasPrefix(data, cbChangeName+":"):
 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbChangeName+":"), 10, 64)
@@ -178,7 +178,7 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 			return
 		}
 		b.setState(cb.From.ID, stateIdle, 0)
-		b.showClubMenu(chatID, msgID, clubID)
+		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
 
 	case data == cbBackMain:
 		b.setState(cb.From.ID, stateIdle, 0)
@@ -253,6 +253,39 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 		}
 		b.setState(cb.From.ID, stateIdle, 0)
 		b.showClubMembers(ctx, chatID, msgID, clubID, cb.From.ID)
+
+	case strings.HasPrefix(data, cbClubMenu+":"):
+		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbClubMenu+":"), 10, 64)
+		if err != nil {
+			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
+			return
+		}
+		b.setState(cb.From.ID, stateIdle, 0)
+		b.editMessageText(chatID, msgID, "Клуб:", b.clubSubMenu(ctx, clubID, cb.From.ID, chatID))
+
+	case strings.HasPrefix(data, cbManageMenu+":"):
+		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbManageMenu+":"), 10, 64)
+		if err != nil {
+			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
+			return
+		}
+		// Only owner/admin can access management menu.
+		userRole, err := b.svc.GetUserRole(ctx, cb.From.ID, clubID)
+		if err != nil || (userRole != "owner" && userRole != "admin") {
+			b.sendText(chatID, "У вас нет прав для управления клубом.")
+			return
+		}
+		b.setState(cb.From.ID, stateIdle, 0)
+		b.editMessageText(chatID, msgID, "Управление:", manageSubMenuKeyboard(clubID, userRole))
+
+	case strings.HasPrefix(data, cbBackToClubMenu+":"):
+		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbBackToClubMenu+":"), 10, 64)
+		if err != nil {
+			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
+			return
+		}
+		b.setState(cb.From.ID, stateIdle, 0)
+		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
 	}
 }
 
@@ -305,7 +338,7 @@ func (b *Bot) handleCreateClub(ctx context.Context, msg *tgbotapi.Message) {
 
 	b.setState(msg.From.ID, stateIdle, 0)
 	text := fmt.Sprintf("Клуб «%s» создан!\nID: %d", club.Name, club.ID)
-	b.sendTextWithKeyboard(msg.Chat.ID, text, clubMenuKeyboardWithMembers(club.ID))
+	b.sendTextWithKeyboard(msg.Chat.ID, text, b.clubMainMenu(ctx, club.ID, msg.From.ID, msg.Chat.ID))
 }
 
 // handleChangeName changes the club name with the new name provided by the user.
@@ -323,7 +356,7 @@ func (b *Bot) handleChangeName(ctx context.Context, msg *tgbotapi.Message, clubI
 	}
 
 	b.setState(msg.From.ID, stateIdle, 0)
-	b.sendTextWithKeyboard(msg.Chat.ID, "Название клуба изменено.", clubMenuKeyboardWithMembers(clubID))
+	b.sendTextWithKeyboard(msg.Chat.ID, "Название клуба изменено.", b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 }
 
 // showMyClubs displays the list of clubs where the user is the owner.
@@ -347,17 +380,17 @@ func (b *Bot) showMyClubs(ctx context.Context, chatID int64, tgUserID int64) {
 	b.sendTextWithKeyboard(chatID, "Ваши клубы:", clubListKeyboard(items))
 }
 
-// showClubMenu edits the current message to show the club action menu.
-func (b *Bot) showClubMenu(chatID int64, msgID int, clubID int64) {
-	b.editMessageText(chatID, msgID, "Меню клуба:", clubMenuKeyboardWithMembers(clubID))
+// showClubMenu edits the current message to show the club main menu.
+func (b *Bot) showClubMenu(ctx context.Context, chatID int64, msgID int, clubID int64, tgUserID int64) {
+	b.editMessageText(chatID, msgID, "Меню клуба:", b.clubMainMenu(ctx, clubID, tgUserID, chatID))
 }
 
 // showClubInfo displays detailed information about a club.
-func (b *Bot) showClubInfo(ctx context.Context, chatID int64, msgID int, clubID int64) {
+func (b *Bot) showClubInfo(ctx context.Context, chatID int64, msgID int, clubID int64, tgUserID int64) {
 	club, err := b.svc.GetClubInfo(ctx, clubID)
 	if err != nil {
 		b.log.Error("failed to get club info", "error", err)
-		b.editMessageText(chatID, msgID, "Ошибка при получении информации о клубе.", clubMenuKeyboardWithMembers(clubID))
+		b.editMessageText(chatID, msgID, "Ошибка при получении информации о клубе.", b.clubMainMenu(ctx, clubID, tgUserID, chatID))
 		return
 	}
 
@@ -373,7 +406,7 @@ func (b *Bot) showClubInfo(ctx context.Context, chatID int64, msgID int, clubID 
 			"Создан: %s",
 		club.Name, club.ID, tgChat, club.CreatedAt.Format("02.01.2006 15:04:05"),
 	)
-	b.editMessageText(chatID, msgID, text, clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(chatID, msgID, text, b.clubMainMenu(ctx, clubID, tgUserID, chatID))
 }
 
 // handleBind processes the /bind command sent in a Telegram group.
@@ -488,12 +521,12 @@ func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clu
 	player, err := b.svc.GetPlayerByUsername(ctx, username)
 	if err != nil {
 		b.log.Warn("player not found by username", "username", username)
-		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Пользователь @%s не найден в системе.", username), clubMenuKeyboardWithMembers(clubID))
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Пользователь @%s не найден в системе.", username), b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 		return
 	}
 
 	if player.TgUserID == nil {
-		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("У пользователя @%s не привязан Telegram ID.", username), clubMenuKeyboardWithMembers(clubID))
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("У пользователя @%s не привязан Telegram ID.", username), b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 		return
 	}
 
@@ -506,12 +539,12 @@ func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clu
 	})
 	if err != nil {
 		b.log.Error("failed to check chat member", "error", err, "tg_user_id", *player.TgUserID)
-		b.sendTextWithKeyboard(msg.Chat.ID, "Ошибка при проверке участия пользователя в группе.", clubMenuKeyboardWithMembers(clubID))
+		b.sendTextWithKeyboard(msg.Chat.ID, "Ошибка при проверке участия пользователя в группе.", b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 		return
 	}
 
 	if chatMember.HasLeft() || chatMember.WasKicked() {
-		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Пользователь @%s не является участником этой группы.", username), clubMenuKeyboardWithMembers(clubID))
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Пользователь @%s не является участником этой группы.", username), b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 		return
 	}
 
@@ -519,7 +552,7 @@ func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clu
 	_, club, err := b.svc.InviteMember(ctx, msg.From.ID, clubID, *player.TgUserID)
 	if err != nil {
 		b.log.Warn("failed to invite member", "error", err)
-		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Ошибка: %v", err), clubMenuKeyboardWithMembers(clubID))
+		b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Ошибка: %v", err), b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 		return
 	}
 
@@ -529,7 +562,7 @@ func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clu
 	inviteText := fmt.Sprintf("Приглашение в клуб «%s» для @%s.\nНажмите кнопку, чтобы перейти в личный чат с ботом.", club.Name, username)
 	b.sendTextWithKeyboard(msg.Chat.ID, inviteText, groupInviteKeyboard(club.ID, b.api.Self.UserName))
 
-	b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Приглашение опубликовано для @%s.", username), clubMenuKeyboardWithMembers(clubID))
+	b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("Приглашение опубликовано для @%s.", username), b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
 }
 
 // showClubMembers displays the list of club members.
@@ -537,12 +570,12 @@ func (b *Bot) showClubMembers(ctx context.Context, chatID int64, msgID int, club
 	members, err := b.svc.GetClubMembers(ctx, tgUserID, clubID)
 	if err != nil {
 		b.log.Error("failed to get club members", "error", err)
-		b.editMessageText(chatID, msgID, "Ошибка при получении списка участников.", clubMenuKeyboardWithMembers(clubID))
+		b.editMessageText(chatID, msgID, "Ошибка при получении списка участников.", b.clubMainMenu(ctx, clubID, tgUserID, chatID))
 		return
 	}
 
 	if len(members) == 0 {
-		b.editMessageText(chatID, msgID, "В клубе пока нет участников.", clubMenuKeyboardWithMembers(clubID))
+		b.editMessageText(chatID, msgID, "В клубе пока нет участников.", b.clubMainMenu(ctx, clubID, tgUserID, chatID))
 		return
 	}
 
@@ -725,7 +758,7 @@ func (b *Bot) handleConfirmEntry(ctx context.Context, cb *tgbotapi.CallbackQuery
 	}
 
 	// Update the message.
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Вступление подтверждено.", clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Вступление подтверждено.", b.clubMainMenu(ctx, clubID, cb.From.ID, cb.Message.Chat.ID))
 }
 
 // handleAssignAdmin processes the owner's assignment of admin role to a member.
@@ -759,7 +792,7 @@ func (b *Bot) handleAssignAdmin(ctx context.Context, cb *tgbotapi.CallbackQuery)
 		b.sendText(*player.TgUserID, "Вас назначили администратором клуба.")
 	}
 
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Администратор назначен.", clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Администратор назначен.", b.clubMainMenu(ctx, clubID, cb.From.ID, cb.Message.Chat.ID))
 }
 
 // handleRemoveAdmin processes the owner's removal of admin role from a member.
@@ -793,7 +826,7 @@ func (b *Bot) handleRemoveAdmin(ctx context.Context, cb *tgbotapi.CallbackQuery)
 		b.sendText(*player.TgUserID, "Вас сняли с должности администратора клуба.")
 	}
 
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Администратор снят.", clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Администратор снят.", b.clubMainMenu(ctx, clubID, cb.From.ID, cb.Message.Chat.ID))
 }
 
 // handleBanMember processes banning a member.
@@ -827,7 +860,7 @@ func (b *Bot) handleBanMember(ctx context.Context, cb *tgbotapi.CallbackQuery) {
 		b.sendText(*player.TgUserID, "Вы забанены в клубе.")
 	}
 
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Участник забанен.", clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Участник забанен.", b.clubMainMenu(ctx, clubID, cb.From.ID, cb.Message.Chat.ID))
 }
 
 // handleUnbanMember processes unbanning a member.
@@ -861,7 +894,7 @@ func (b *Bot) handleUnbanMember(ctx context.Context, cb *tgbotapi.CallbackQuery)
 		b.sendText(*player.TgUserID, "Вы разбанены в клубе.")
 	}
 
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Участник разбанен.", clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Участник разбанен.", b.clubMainMenu(ctx, clubID, cb.From.ID, cb.Message.Chat.ID))
 }
 
 // handleKickMember processes removing (kicking) a member from the club.
@@ -895,5 +928,5 @@ func (b *Bot) handleKickMember(ctx context.Context, cb *tgbotapi.CallbackQuery) 
 		b.sendText(*player.TgUserID, "Вы удалены из клуба.")
 	}
 
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Участник исключен.", clubMenuKeyboardWithMembers(clubID))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Участник исключен.", b.clubMainMenu(ctx, clubID, cb.From.ID, cb.Message.Chat.ID))
 }

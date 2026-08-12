@@ -281,6 +281,19 @@ func (s *Service) GetClubMember(ctx context.Context, clubID, playerID int64) (*d
 	return s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, playerID)
 }
 
+// GetUserRole returns the role of a Telegram user in a specific club.
+func (s *Service) GetUserRole(ctx context.Context, tgUserID int64, clubID int64) (string, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return "", err
+	}
+	member, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID)
+	if err != nil {
+		return "", err
+	}
+	return member.Role, nil
+}
+
 // AcceptInvitation allows an invited user to accept an invitation to a club.
 // The user must have a pending invitation (status='pending', accepted=false).
 // After accepting, accepted is set to true and the invitation awaits

@@ -24,18 +24,23 @@ const (
 	cbBindSelect   = "bind_select"
 
 	// Phase 02: club member management
-	cbInviteMember    = "invite_member"
-	cbListMembers     = "list_members"
-	cbMemberAction    = "member_action"
-	cbAcceptInvite    = "accept_invite"
-	cbRejectInvite    = "reject_invite"
-	cbConfirmEntry    = "confirm_entry"
-	cbAssignAdmin     = "assign_admin"
-	cbRemoveAdmin     = "remove_admin"
-	cbBanMember       = "ban_member"
-	cbUnbanMember     = "unban_member"
-	cbKickMember      = "kick_member"
-	cbBackMembers     = "back_members"
+	cbInviteMember = "invite_member"
+	cbListMembers  = "list_members"
+	cbMemberAction = "member_action"
+	cbAcceptInvite = "accept_invite"
+	cbRejectInvite = "reject_invite"
+	cbConfirmEntry = "confirm_entry"
+	cbAssignAdmin  = "assign_admin"
+	cbRemoveAdmin  = "remove_admin"
+	cbBanMember    = "ban_member"
+	cbUnbanMember  = "unban_member"
+	cbKickMember   = "kick_member"
+	cbBackMembers  = "back_members"
+
+	// Club menu structure
+	cbClubMenu       = "club_menu"
+	cbManageMenu     = "manage_menu"
+	cbBackToClubMenu = "back_to_club_menu"
 )
 
 // stateAction constants for user input state
@@ -101,29 +106,94 @@ func bindClubSelectKeyboard(clubs []clubListItem, tgChatID int64) tgbotapi.Inlin
 	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
-// clubMenuKeyboardWithMembers returns the club menu with member management buttons.
-func clubMenuKeyboardWithMembers(clubID int64) tgbotapi.InlineKeyboardMarkup {
+// clubMainMenuKeyboard returns the intermediate club menu with "Клуб" and
+// "Управление" buttons. "Управление" is only included for owner/admin roles.
+func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s", cbClubInfo, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Клуб", fmt.Sprintf("%s:%s", cbClubMenu, id)),
+	))
+
+	if userRole == "owner" || userRole == "admin" {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Управление", fmt.Sprintf("%s:%s", cbManageMenu, id)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackClubs),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// clubSubMenuKeyboard returns the "Клуб" submenu with info and member list.
+// "Закрыть клуб" is only included for the owner in a private chat.
+func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s", cbClubInfo, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
+	))
+
+	// if userRole == "owner" && isPrivate {
+	// 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+	// 		tgbotapi.NewInlineKeyboardButtonData("Закрыть клуб", fmt.Sprintf("%s:%s", cbCloseClub, id)),
+	// 	))
+	// }
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// manageSubMenuKeyboard returns the "Управление" submenu with club management actions.
+func manageSubMenuKeyboard(clubID int64, userRole string) tgbotapi.InlineKeyboardMarkup {
+	id := strconv.FormatInt(clubID, 10)
+
+	// return tgbotapi.NewInlineKeyboardMarkup(
+	// 	tgbotapi.NewInlineKeyboardRow(
+	// 		tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
+	// 	),
+	// 	tgbotapi.NewInlineKeyboardRow(
+	// 		tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
+	// 	),
+	// 	tgbotapi.NewInlineKeyboardRow(
+	// 		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
+	// 	),
+	// )
+
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
+	))
+
+	if userRole == "owner" {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Закрыть клуб", fmt.Sprintf("%s:%s", cbCloseClub, id)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackMain),
-		),
-	)
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+
 }
 
 // memberListKeyboard builds an inline keyboard listing club members for selection.

@@ -120,6 +120,27 @@ func (b *Bot) handleNewChatMembers(ctx context.Context, update tgbotapi.Update) 
 	}
 }
 
+// clubMainMenu returns the intermediate club menu keyboard, determining the
+// user's role and whether the chat is private.
+func (b *Bot) clubMainMenu(ctx context.Context, clubID int64, tgUserID int64, chatID int64) tgbotapi.InlineKeyboardMarkup {
+	userRole := ""
+	if role, err := b.svc.GetUserRole(ctx, tgUserID, clubID); err == nil {
+		userRole = role
+	}
+	isPrivate := chatID > 0
+	return clubMainMenuKeyboard(clubID, userRole, isPrivate)
+}
+
+// clubSubMenu returns the "Клуб" submenu keyboard.
+func (b *Bot) clubSubMenu(ctx context.Context, clubID int64, tgUserID int64, chatID int64) tgbotapi.InlineKeyboardMarkup {
+	userRole := ""
+	if role, err := b.svc.GetUserRole(ctx, tgUserID, clubID); err == nil {
+		userRole = role
+	}
+	isPrivate := chatID > 0
+	return clubSubMenuKeyboard(clubID, userRole, isPrivate)
+}
+
 // SetupWebhook registers the webhook URL with Telegram.
 func (b *Bot) SetupWebhook(ctx context.Context, webhookURL string) error {
 	wh, err := tgbotapi.NewWebhook(webhookURL)
@@ -183,7 +204,7 @@ func (b *Bot) sendText(chatID int64, text string) {
 // sendTextWithKeyboard sends a text message with an inline keyboard.
 func (b *Bot) sendTextWithKeyboard(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) {
 	msg := tgbotapi.NewMessage(chatID, text)
-	//msg.ReplyMarkup = &keyboard
+	msg.ReplyMarkup = &keyboard
 	if _, err := b.api.Send(msg); err != nil {
 		b.log.Error("failed to send message", "error", err)
 	}
