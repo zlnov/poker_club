@@ -14,8 +14,10 @@ import (
 
 // userState tracks the current input state for a Telegram user.
 type userState struct {
-	action string // stateIdle, stateCreateClub, stateChangeName, stateCloseConfirm
-	clubID int64  // relevant club ID when applicable
+	action   string // stateIdle, stateCreateClub, stateChangeName, stateCloseConfirm, stateCreateGame, etc.
+	clubID   int64  // relevant club ID when applicable
+	gameID   int64  // relevant game ID when applicable
+	gameData *gameCreationData
 }
 
 // Bot wraps the Telegram Bot API client and provides update processing.

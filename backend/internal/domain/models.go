@@ -79,8 +79,15 @@ type GameParticipant struct {
 	ChipsEnd     *float64
 	PayoutAmount *float64
 	Place        *int
+	Status       string // invited, accepted, declined, confirmed
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+// GameParticipantWithPlayer represents a game participant with their associated player info.
+type GameParticipantWithPlayer struct {
+	GameParticipant
+	Player Player
 }
 
 // Event represents an entry in the event log.

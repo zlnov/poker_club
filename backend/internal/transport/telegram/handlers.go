@@ -208,8 +208,15 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 		}
 		b.showClubMembers(ctx, chatID, msgID, clubID, cb.From.ID)
 
-	case strings.HasPrefix(data, cbMemberAction+":"):
-		b.handleMemberAction(ctx, cb)
+ 	case strings.HasPrefix(data, cbMemberAction+":"):
+ 		// Distinguish club member actions (3 parts: club_id:player_id)
+ 		// from game participant actions (4 parts: club_id:game_id:player_id).
+ 		parts := strings.Split(data, ":")
+ 		if len(parts) == 4 {
+ 			b.handleGameParticipantAction(ctx, cb)
+ 		} else {
+ 			b.handleMemberAction(ctx, cb)
+ 		}
 
 	case strings.HasPrefix(data, cbAcceptInvite+":"):
 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbAcceptInvite+":"), 10, 64)
@@ -278,15 +285,69 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 		b.setState(cb.From.ID, stateIdle, 0)
 		b.editMessageText(chatID, msgID, "Управление:", manageSubMenuKeyboard(clubID, userRole))
 
-	case strings.HasPrefix(data, cbBackToClubMenu+":"):
-		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbBackToClubMenu+":"), 10, 64)
-		if err != nil {
-			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
-			return
-		}
-		b.setState(cb.From.ID, stateIdle, 0)
-		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
-	}
+ 	case strings.HasPrefix(data, cbBackToClubMenu+":"):
+ 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbBackToClubMenu+":"), 10, 64)
+ 		if err != nil {
+ 			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
+ 			return
+ 		}
+ 		b.setState(cb.From.ID, stateIdle, 0)
+ 		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
+ 
+ 	case strings.HasPrefix(data, cbCreateGame+":"):
+ 		b.handleCreateGame(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameList+":"):
+ 		b.handleGameList(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbSelectGame+":"):
+ 		b.handleSelectGame(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameInfo+":"):
+ 		b.handleGameInfo(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameParticipants+":"):
+ 		b.handleGameParticipants(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameInvite+":"):
+ 		b.handleGameInvite(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameChangeParams+":"):
+ 		b.handleGameChangeParams(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameCancel+":"):
+ 		b.handleGameCancel(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameConfirmCancel+":"):
+ 		b.handleGameConfirmCancel(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameAccept+":"):
+ 		b.handleGameAccept(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameDecline+":"):
+ 		b.handleGameDecline(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameConfirmParticipation+":"):
+ 		b.handleGameConfirmParticipation(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameRemoveParticipant+":"):
+ 		b.handleGameRemoveParticipant(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameBack+":"):
+ 		b.handleGameBack(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameEditParam+":"):
+ 		b.handleGameEditParam(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameSelectParam+":"):
+ 		b.handleGameSelectParam(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameCreateConfirm+":"):
+ 		b.handleGameCreateConfirm(ctx, cb)
+ 
+ 	case strings.HasPrefix(data, cbGameCreateCancel+":"):
+ 		b.handleGameCreateCancel(ctx, cb)
+ 	}
 }
 
 // handleTextMessage processes regular text messages based on the user's current state.
@@ -302,16 +363,20 @@ func (b *Bot) handleTextMessage(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	switch state.action {
-	case stateCreateClub:
-		b.handleCreateClub(ctx, msg)
-	case stateChangeName:
-		b.handleChangeName(ctx, msg, state.clubID)
-	case stateInviteMember:
-		b.handleInviteMember(ctx, msg, state.clubID, msg.Text)
-	default:
-		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
-	}
+ 	switch state.action {
+ 	case stateCreateClub:
+ 		b.handleCreateClub(ctx, msg)
+ 	case stateChangeName:
+ 		b.handleChangeName(ctx, msg, state.clubID)
+ 	case stateInviteMember:
+ 		b.handleInviteMember(ctx, msg, state.clubID, msg.Text)
+ 	case stateCreateGame:
+ 		b.handleGameParamInput(ctx, msg, state)
+ 	case stateGameInviteMember:
+ 		b.handleGameInviteMember(ctx, msg, state.clubID, state.gameID, msg.Text)
+ 	default:
+ 		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
+ 	}
 }
 
 // handleCreateClub creates a club with the name provided by the user.

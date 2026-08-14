@@ -336,6 +336,148 @@ func (r *gameRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
+func (r *gameRepository) Create(ctx context.Context, game *domain.Game) (int64, error) {
+	query := `
+		INSERT INTO games (
+			club_id, banker_id, game_type, currency, money_model,
+			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
+			duration, start_time, end_time, status, min_players, max_players,
+			ranking_primary, ranking_secondary
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+			$11, $12, $13, $14, $15, $16, $17, $18
+		) RETURNING id
+	`
+	var id int64
+	err := r.db.Pool.QueryRow(ctx, query,
+		game.ClubID, game.BankerID, game.GameType, game.Currency, game.MoneyModel,
+		game.ChipValue, game.BuyInAmount, game.RebuyAllowed, game.RebuyPrice, game.MaxRebuys,
+		game.Duration, game.StartTime, game.EndTime, game.Status, game.MinPlayers, game.MaxPlayers,
+		game.RankingPrimary, game.RankingSecondary,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create game: %w", err)
+	}
+	return id, nil
+}
+
+func (r *gameRepository) GetByID(ctx context.Context, id int64) (*domain.Game, error) {
+	query := `
+		SELECT id, club_id, banker_id, game_type, currency, money_model,
+			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
+			duration, start_time, end_time, status, min_players, max_players,
+			ranking_primary, ranking_secondary, created_at, updated_at
+		FROM games WHERE id = $1
+	`
+	var g domain.Game
+	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
+		&g.ID, &g.ClubID, &g.BankerID, &g.GameType, &g.Currency, &g.MoneyModel,
+		&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
+		&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
+		&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("game not found: id=%d", id)
+		}
+		return nil, fmt.Errorf("failed to get game: %w", err)
+	}
+	return &g, nil
+}
+
+func (r *gameRepository) GetByClub(ctx context.Context, clubID int64) ([]*domain.Game, error) {
+	query := `
+		SELECT id, club_id, banker_id, game_type, currency, money_model,
+			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
+			duration, start_time, end_time, status, min_players, max_players,
+			ranking_primary, ranking_secondary, created_at, updated_at
+		FROM games WHERE club_id = $1
+		ORDER BY start_time DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get games by club: %w", err)
+	}
+	defer rows.Close()
+
+	var games []*domain.Game
+	for rows.Next() {
+		var g domain.Game
+		if err := rows.Scan(
+			&g.ID, &g.ClubID, &g.BankerID, &g.GameType, &g.Currency, &g.MoneyModel,
+			&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
+			&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
+			&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan game: %w", err)
+		}
+		games = append(games, &g)
+	}
+	return games, nil
+}
+
+func (r *gameRepository) GetActiveByClub(ctx context.Context, clubID int64) (*domain.Game, error) {
+	query := `
+		SELECT id, club_id, banker_id, game_type, currency, money_model,
+			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
+			duration, start_time, end_time, status, min_players, max_players,
+			ranking_primary, ranking_secondary, created_at, updated_at
+		FROM games WHERE club_id = $1 AND status = 'active'
+		ORDER BY start_time DESC
+		LIMIT 1
+	`
+	var g domain.Game
+	err := r.db.Pool.QueryRow(ctx, query, clubID).Scan(
+		&g.ID, &g.ClubID, &g.BankerID, &g.GameType, &g.Currency, &g.MoneyModel,
+		&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
+		&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
+		&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("no active game found for club: club_id=%d", clubID)
+		}
+		return nil, fmt.Errorf("failed to get active game: %w", err)
+	}
+	return &g, nil
+}
+
+func (r *gameRepository) Update(ctx context.Context, game *domain.Game) error {
+	query := `
+		UPDATE games SET
+			banker_id = $1, game_type = $2, currency = $3, money_model = $4,
+			chip_value = $5, buy_in_amount = $6, rebuy_allowed = $7, rebuy_price = $8,
+			max_rebuys = $9, duration = $10, start_time = $11, min_players = $12,
+			max_players = $13, ranking_primary = $14, ranking_secondary = $15
+		WHERE id = $16
+	`
+	tag, err := r.db.Pool.Exec(ctx, query,
+		game.BankerID, game.GameType, game.Currency, game.MoneyModel,
+		game.ChipValue, game.BuyInAmount, game.RebuyAllowed, game.RebuyPrice,
+		game.MaxRebuys, game.Duration, game.StartTime, game.MinPlayers,
+		game.MaxPlayers, game.RankingPrimary, game.RankingSecondary, game.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update game: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game not found: id=%d", game.ID)
+	}
+	return nil
+}
+
+func (r *gameRepository) Cancel(ctx context.Context, id int64) error {
+	query := `UPDATE games SET status = 'cancelled' WHERE id = $1`
+	tag, err := r.db.Pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to cancel game: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game not found: id=%d", id)
+	}
+	return nil
+}
+
 // gameParticipantRepository implements domain.GameParticipantRepository.
 type gameParticipantRepository struct {
 	db *DB
@@ -345,6 +487,166 @@ func (r *gameParticipantRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
+func (r *gameParticipantRepository) Create(ctx context.Context, participant *domain.GameParticipant) (int64, error) {
+	query := `
+		INSERT INTO game_participants (game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`
+	var id int64
+	err := r.db.Pool.QueryRow(ctx, query,
+		participant.GameID, participant.PlayerID, participant.BuyInCount,
+		participant.RebuyCount, participant.ChipsEnd, participant.PayoutAmount,
+		participant.Place, participant.Status,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create game participant: %w", err)
+	}
+	return id, nil
+}
+
+func (r *gameParticipantRepository) GetByID(ctx context.Context, id int64) (*domain.GameParticipant, error) {
+	query := `
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status, created_at, updated_at
+		FROM game_participants WHERE id = $1
+	`
+	var p domain.GameParticipant
+	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
+		&p.ID, &p.GameID, &p.PlayerID, &p.BuyInCount, &p.RebuyCount,
+		&p.ChipsEnd, &p.PayoutAmount, &p.Place, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("game participant not found: id=%d", id)
+		}
+		return nil, fmt.Errorf("failed to get game participant: %w", err)
+	}
+	return &p, nil
+}
+
+func (r *gameParticipantRepository) GetByGame(ctx context.Context, gameID int64) ([]*domain.GameParticipant, error) {
+	query := `
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status, created_at, updated_at
+		FROM game_participants WHERE game_id = $1
+		ORDER BY id ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game participants: %w", err)
+	}
+	defer rows.Close()
+
+	var participants []*domain.GameParticipant
+	for rows.Next() {
+		var p domain.GameParticipant
+		if err := rows.Scan(
+			&p.ID, &p.GameID, &p.PlayerID, &p.BuyInCount, &p.RebuyCount,
+			&p.ChipsEnd, &p.PayoutAmount, &p.Place, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan game participant: %w", err)
+		}
+		participants = append(participants, &p)
+	}
+	return participants, nil
+}
+
+func (r *gameParticipantRepository) GetByGameWithPlayers(ctx context.Context, gameID int64) ([]*domain.GameParticipantWithPlayer, error) {
+	query := `
+		SELECT gp.id, gp.game_id, gp.player_id, gp.buy_in_count, gp.rebuy_count,
+		       gp.chips_end, gp.payout_amount, gp.place, gp.status, gp.created_at, gp.updated_at,
+		       p.id, p.first_name, p.last_name, p.nickname, p.phone_number, p.email, p.password,
+		       p.tg_user_id, p.last_seen, p.created_at, p.updated_at
+		FROM game_participants gp
+		JOIN players p ON p.id = gp.player_id
+		WHERE gp.game_id = $1
+		ORDER BY gp.id ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game participants with players: %w", err)
+	}
+	defer rows.Close()
+
+	var participants []*domain.GameParticipantWithPlayer
+	for rows.Next() {
+		var gp domain.GameParticipantWithPlayer
+		if err := rows.Scan(
+			&gp.ID, &gp.GameID, &gp.PlayerID, &gp.BuyInCount, &gp.RebuyCount,
+			&gp.ChipsEnd, &gp.PayoutAmount, &gp.Place, &gp.Status, &gp.CreatedAt, &gp.UpdatedAt,
+			&gp.Player.ID, &gp.Player.FirstName, &gp.Player.LastName, &gp.Player.Nickname,
+			&gp.Player.PhoneNumber, &gp.Player.Email, &gp.Player.Password,
+			&gp.Player.TgUserID, &gp.Player.LastSeen, &gp.Player.CreatedAt, &gp.Player.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan game participant with player: %w", err)
+		}
+		participants = append(participants, &gp)
+	}
+	return participants, nil
+}
+
+func (r *gameParticipantRepository) GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) (*domain.GameParticipant, error) {
+	query := `
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status, created_at, updated_at
+		FROM game_participants WHERE game_id = $1 AND player_id = $2
+	`
+	var p domain.GameParticipant
+	err := r.db.Pool.QueryRow(ctx, query, gameID, playerID).Scan(
+		&p.ID, &p.GameID, &p.PlayerID, &p.BuyInCount, &p.RebuyCount,
+		&p.ChipsEnd, &p.PayoutAmount, &p.Place, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("game participant not found: game_id=%d, player_id=%d", gameID, playerID)
+		}
+		return nil, fmt.Errorf("failed to get game participant: %w", err)
+	}
+	return &p, nil
+}
+
+func (r *gameParticipantRepository) Update(ctx context.Context, participant *domain.GameParticipant) error {
+	query := `
+		UPDATE game_participants SET
+			buy_in_count = $1, rebuy_count = $2, chips_end = $3, payout_amount = $4,
+			place = $5, status = $6
+		WHERE id = $7
+	`
+	tag, err := r.db.Pool.Exec(ctx, query,
+		participant.BuyInCount, participant.RebuyCount, participant.ChipsEnd,
+		participant.PayoutAmount, participant.Place, participant.Status, participant.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update game participant: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game participant not found: id=%d", participant.ID)
+	}
+	return nil
+}
+
+func (r *gameParticipantRepository) UpdateStatus(ctx context.Context, gameID, playerID int64, status string) error {
+	query := `UPDATE game_participants SET status = $1 WHERE game_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, status, gameID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to update game participant status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game participant not found: game_id=%d, player_id=%d", gameID, playerID)
+	}
+	return nil
+}
+
+func (r *gameParticipantRepository) Delete(ctx context.Context, gameID, playerID int64) error {
+	query := `DELETE FROM game_participants WHERE game_id = $1 AND player_id = $2`
+	tag, err := r.db.Pool.Exec(ctx, query, gameID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to delete game participant: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game participant not found: game_id=%d, player_id=%d", gameID, playerID)
+	}
+	return nil
+}
+
 // eventRepository implements domain.EventRepository.
 type eventRepository struct {
 	db *DB
@@ -352,6 +654,23 @@ type eventRepository struct {
 
 func (r *eventRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
+}
+
+func (r *eventRepository) Create(ctx context.Context, event *domain.Event) (int64, error) {
+	query := `
+		INSERT INTO events (game_id, player_id, type, old_value, new_value, metadata, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id
+	`
+	var id int64
+	err := r.db.Pool.QueryRow(ctx, query,
+		event.GameID, event.PlayerID, event.Type, event.OldValue, event.NewValue,
+		event.Metadata, event.CreatedBy,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create event: %w", err)
+	}
+	return id, nil
 }
 
 // playerStatisticsRepository implements domain.PlayerStatisticsRepository.

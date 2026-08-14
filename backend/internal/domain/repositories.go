@@ -38,16 +38,31 @@ type ClubMemberRepository interface {
 // GameRepository defines operations for game persistence.
 type GameRepository interface {
 	Ping(ctx context.Context) error
+	Create(ctx context.Context, game *Game) (int64, error)
+	GetByID(ctx context.Context, id int64) (*Game, error)
+	GetByClub(ctx context.Context, clubID int64) ([]*Game, error)
+	GetActiveByClub(ctx context.Context, clubID int64) (*Game, error)
+	Update(ctx context.Context, game *Game) error
+	Cancel(ctx context.Context, id int64) error
 }
 
 // GameParticipantRepository defines operations for game participant persistence.
 type GameParticipantRepository interface {
 	Ping(ctx context.Context) error
+	Create(ctx context.Context, participant *GameParticipant) (int64, error)
+	GetByID(ctx context.Context, id int64) (*GameParticipant, error)
+	GetByGame(ctx context.Context, gameID int64) ([]*GameParticipant, error)
+	GetByGameWithPlayers(ctx context.Context, gameID int64) ([]*GameParticipantWithPlayer, error)
+	GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) (*GameParticipant, error)
+	Update(ctx context.Context, participant *GameParticipant) error
+	UpdateStatus(ctx context.Context, gameID, playerID int64, status string) error
+	Delete(ctx context.Context, gameID, playerID int64) error
 }
 
 // EventRepository defines operations for event log persistence.
 type EventRepository interface {
 	Ping(ctx context.Context) error
+	Create(ctx context.Context, event *Event) (int64, error)
 }
 
 // PlayerStatisticsRepository defines operations for player statistics persistence.
