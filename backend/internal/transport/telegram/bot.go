@@ -130,7 +130,7 @@ func (b *Bot) clubMainMenu(ctx context.Context, clubID int64, tgUserID int64, ch
 		userRole = role
 	}
 	isPrivate := chatID > 0
-	return clubMainMenuKeyboard(clubID, userRole, isPrivate)
+	return clubMainMenuKeyboard(clubID, userRole, isPrivate, b.api.Self.UserName)
 }
 
 // clubSubMenu returns the "Клуб" submenu keyboard.
@@ -219,4 +219,19 @@ func (b *Bot) editMessageText(chatID int64, msgID int, text string, keyboard tgb
 	if _, err := b.api.Send(edit); err != nil {
 		b.log.Error("failed to edit message", "error", err)
 	}
+}
+
+// sendGroupNotification sends a notification message to the group chat bound
+// to a club. If the club has no bound group, the notification is silently
+// skipped.
+func (b *Bot) sendGroupNotification(ctx context.Context, clubID int64, text string) {
+	club, err := b.svc.GetClubInfo(ctx, clubID)
+	if err != nil {
+		b.log.Warn("failed to get club for group notification", "error", err, "club_id", clubID)
+		return
+	}
+	if club.TgChatID == nil {
+		return
+	}
+	b.sendText(*club.TgChatID, text)
 }

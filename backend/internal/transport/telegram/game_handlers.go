@@ -369,8 +369,11 @@ func (b *Bot) handleGameCreateConfirm(ctx context.Context, cb *tgbotapi.Callback
 
 	b.setState(cb.From.ID, stateIdle, 0)
 
-	// Send notification to the club group.
+	// Send game menu to the private chat.
 	b.sendTextWithKeyboard(cb.Message.Chat.ID, fmt.Sprintf("Игра [%s] создана (ID: %d). Статус: planned", gameTypeLabel(createdGame.GameType), createdGame.ID), b.gameMenuKeyboard(ctx, clubID, createdGame.ID, cb.From.ID))
+
+	// Send notification to the club group chat.
+	b.sendGroupNotification(ctx, clubID, fmt.Sprintf("🎲 Создана новая игра #%d %s", createdGame.ID, createdGame.StartTime.Format("02.01.2006 15:04")))
 
 	// Send personal invitations to all active club members.
 	b.sendGameInvitations(ctx, cb.From.ID, clubID, createdGame.ID)
@@ -878,6 +881,12 @@ func (b *Bot) handleGameConfirmCancel(ctx context.Context, cb *tgbotapi.Callback
 				b.sendText(*p.Player.TgUserID, "Игра отменена.")
 			}
 		}
+	}
+
+	// Send notification to the club group chat.
+	game, _ := b.svc.GetGame(ctx, cb.From.ID, clubID, gameID)
+	if game != nil {
+		b.sendGroupNotification(ctx, clubID, fmt.Sprintf("🎲 Игра #%d %s отменена", gameID, game.StartTime.Format("02.01.2006 15:04")))
 	}
 
 	b.setState(cb.From.ID, stateIdle, 0)

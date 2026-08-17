@@ -28,6 +28,8 @@ func (b *Bot) handleCommand(ctx context.Context, update tgbotapi.Update) {
 	switch cmd {
 	case "/start":
 		b.handleStart(ctx, msg)
+	case "/menu":
+		b.handleMenu(ctx, msg)
 	case "/bind":
 		b.handleBind(ctx, msg)
 	case "/invite":
@@ -38,15 +40,24 @@ func (b *Bot) handleCommand(ctx context.Context, update tgbotapi.Update) {
 }
 
 // handleStart processes the /start command — shows the main menu.
-// If a deep link parameter is present (e.g. "invite_<club_id>"), it shows the
-// invitation message instead of the main menu. The deep link does NOT create
-// a new Player; it only works with an existing player and club_member.
+// If a deep link parameter is present:
+//   - "invite_<club_id>": shows the invitation message
+//   - "club_<club_id>": opens the club menu in private chat (Group → Private transition)
+//
+// The deep link does NOT create a new Player; it only works with an existing
+// player and club_member.
 func (b *Bot) handleStart(ctx context.Context, msg *tgbotapi.Message) {
 	args := msg.CommandArguments()
 
 	// Deep link: invite_<club_id>
 	if strings.HasPrefix(args, "invite_") {
 		b.handleStartWithInvite(ctx, msg, args)
+		return
+	}
+
+	// Deep link: club_<club_id> (Group → Private transition)
+	if strings.HasPrefix(args, "club_") {
+		b.handleStartWithClub(ctx, msg, args)
 		return
 	}
 
@@ -100,6 +111,89 @@ func (b *Bot) handleStartWithInvite(ctx context.Context, msg *tgbotapi.Message, 
 
 	inviteText := fmt.Sprintf("Вас приглашают вступить в клуб «%s»", club.Name)
 	b.sendTextWithKeyboard(msg.Chat.ID, inviteText, invitationKeyboard(club.ID))
+}
+
+// handleStartWithClub processes a /start command with a deep link parameter
+// "club_<club_id>". This is the Group → Private Chat transition: the user
+// clicks "Управление" in the group chat and lands in their private chat with
+// the club menu open.
+func (b *Bot) handleStartWithClub(ctx context.Context, msg *tgbotapi.Message, args string) {
+	clubID, err := strconv.ParseInt(strings.TrimPrefix(args, "club_"), 10, 64)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Ошибка: неверная ссылка.")
+		return
+	}
+
+	// Register the user (if new) — needed to resolve role.
+	firstName := msg.From.FirstName
+	lastName := msg.From.LastName
+	nickname := msg.From.UserName
+	if nickname == "" {
+		nickname = firstName
+	}
+	_, err = b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	if err != nil {
+		b.log.Error("failed to register player on /start club deep link", "error", err)
+		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
+		return
+	}
+
+	// Show the club main menu in private chat.
+	b.sendTextWithKeyboard(msg.Chat.ID, "Меню клуба:", b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
+}
+
+// handleMenu processes the /menu command. It shows the appropriate menu based
+// on the current chat context (group or private) and the user's role.
+func (b *Bot) handleMenu(ctx context.Context, msg *tgbotapi.Message) {
+	// In group chat: show the group chat menu for the bound club.
+	if msg.Chat.Type == "group" || msg.Chat.Type == "supergroup" {
+		club, err := b.svc.GetClubByTgChatID(ctx, msg.Chat.ID)
+		if err != nil {
+			b.sendText(msg.Chat.ID, "Эта группа не привязана к клубу.")
+			return
+		}
+		b.sendTextWithKeyboard(msg.Chat.ID, "Меню клуба:", b.clubMainMenu(ctx, club.ID, msg.From.ID, msg.Chat.ID))
+		return
+	}
+
+	// In private chat: register user (if new) and show role-appropriate menu.
+	firstName := msg.From.FirstName
+	lastName := msg.From.LastName
+	nickname := msg.From.UserName
+	if nickname == "" {
+		nickname = firstName
+	}
+	_, err := b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	if err != nil {
+		b.log.Error("failed to register player on /menu", "error", err)
+		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
+		return
+	}
+
+	b.sendTextWithKeyboard(msg.Chat.ID, "Меню:", b.privateMainMenu(ctx, msg.From.ID))
+}
+
+// privateMainMenu returns the appropriate main menu keyboard for a private chat
+// based on the user's role. Owner/admin users see "Создать клуб"; members see
+// "Назад" instead.
+func (b *Bot) privateMainMenu(ctx context.Context, tgUserID int64) tgbotapi.InlineKeyboardMarkup {
+	ownerClubs, err := b.svc.GetUserClubs(ctx, tgUserID)
+	if err != nil {
+		b.log.Warn("failed to get user clubs for menu", "error", err, "tg_user_id", tgUserID)
+	}
+
+	allClubs, err := b.svc.GetUserClubsAll(ctx, tgUserID)
+	if err != nil {
+		b.log.Warn("failed to get user all clubs for menu", "error", err, "tg_user_id", tgUserID)
+	}
+
+	// If user is an owner of any club, or has no clubs at all, show owner/admin menu.
+	if len(ownerClubs) > 0 || len(allClubs) == 0 {
+		return mainMenuKeyboardMarkup()
+	}
+
+	// User is only a member (not owner) → show member menu.
+	return privateMemberMenuKeyboard()
 }
 
 // handleCallback processes inline keyboard button presses.
@@ -182,11 +276,24 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 
 	case data == cbBackMain:
 		b.setState(cb.From.ID, stateIdle, 0)
-		b.editMessageText(chatID, msgID, "Главное меню:", mainMenuKeyboardMarkup())
+		if chatID > 0 {
+			b.editMessageText(chatID, msgID, "Главное меню:", b.privateMainMenu(ctx, cb.From.ID))
+		}
 
 	case data == cbBackClubs:
 		b.setState(cb.From.ID, stateIdle, 0)
-		b.showMyClubs(ctx, chatID, cb.From.ID)
+		if chatID > 0 {
+			// Private chat: show my clubs.
+			b.showMyClubs(ctx, chatID, cb.From.ID)
+		} else {
+			// Group chat: show the group chat menu for the bound club.
+			club, err := b.svc.GetClubByTgChatID(ctx, chatID)
+			if err != nil {
+				b.sendText(chatID, "Ошибка: клуб не найден.")
+				return
+			}
+			b.editMessageText(chatID, msgID, "Меню клуба:", b.clubMainMenu(ctx, club.ID, cb.From.ID, chatID))
+		}
 
 	case strings.HasPrefix(data, cbBindSelect+":"):
 		b.handleBindSelect(ctx, cb)
@@ -208,15 +315,15 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 		}
 		b.showClubMembers(ctx, chatID, msgID, clubID, cb.From.ID)
 
- 	case strings.HasPrefix(data, cbMemberAction+":"):
- 		// Distinguish club member actions (3 parts: club_id:player_id)
- 		// from game participant actions (4 parts: club_id:game_id:player_id).
- 		parts := strings.Split(data, ":")
- 		if len(parts) == 4 {
- 			b.handleGameParticipantAction(ctx, cb)
- 		} else {
- 			b.handleMemberAction(ctx, cb)
- 		}
+	case strings.HasPrefix(data, cbMemberAction+":"):
+		// Distinguish club member actions (3 parts: club_id:player_id)
+		// from game participant actions (4 parts: club_id:game_id:player_id).
+		parts := strings.Split(data, ":")
+		if len(parts) == 4 {
+			b.handleGameParticipantAction(ctx, cb)
+		} else {
+			b.handleMemberAction(ctx, cb)
+		}
 
 	case strings.HasPrefix(data, cbAcceptInvite+":"):
 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbAcceptInvite+":"), 10, 64)
@@ -276,6 +383,11 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
 			return
 		}
+		// Management menu is only available in private chat.
+		if chatID < 0 {
+			b.sendText(chatID, "Управление доступно только в личном чате с ботом.")
+			return
+		}
 		// Only owner/admin can access management menu.
 		userRole, err := b.svc.GetUserRole(ctx, cb.From.ID, clubID)
 		if err != nil || (userRole != "owner" && userRole != "admin") {
@@ -285,98 +397,104 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 		b.setState(cb.From.ID, stateIdle, 0)
 		b.editMessageText(chatID, msgID, "Управление:", manageSubMenuKeyboard(clubID, userRole))
 
- 	case strings.HasPrefix(data, cbBackToClubMenu+":"):
- 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbBackToClubMenu+":"), 10, 64)
- 		if err != nil {
- 			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
- 			return
- 		}
- 		b.setState(cb.From.ID, stateIdle, 0)
- 		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
- 
- 	case strings.HasPrefix(data, cbCreateGame+":"):
- 		b.handleCreateGame(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameList+":"):
- 		b.handleGameList(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbSelectGame+":"):
- 		b.handleSelectGame(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameInfo+":"):
- 		b.handleGameInfo(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameParticipants+":"):
- 		b.handleGameParticipants(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameInvite+":"):
- 		b.handleGameInvite(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameChangeParams+":"):
- 		b.handleGameChangeParams(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameCancel+":"):
- 		b.handleGameCancel(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameConfirmCancel+":"):
- 		b.handleGameConfirmCancel(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameAccept+":"):
- 		b.handleGameAccept(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameDecline+":"):
- 		b.handleGameDecline(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameConfirmParticipation+":"):
- 		b.handleGameConfirmParticipation(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameRemoveParticipant+":"):
- 		b.handleGameRemoveParticipant(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameBack+":"):
- 		b.handleGameBack(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameEditParam+":"):
- 		b.handleGameEditParam(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameSelectParam+":"):
- 		b.handleGameSelectParam(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameCreateConfirm+":"):
- 		b.handleGameCreateConfirm(ctx, cb)
- 
- 	case strings.HasPrefix(data, cbGameCreateCancel+":"):
- 		b.handleGameCreateCancel(ctx, cb)
- 	}
+	case strings.HasPrefix(data, cbBackToClubMenu+":"):
+		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbBackToClubMenu+":"), 10, 64)
+		if err != nil {
+			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
+			return
+		}
+		b.setState(cb.From.ID, stateIdle, 0)
+		b.showClubMenu(ctx, chatID, msgID, clubID, cb.From.ID)
+
+	case strings.HasPrefix(data, cbCreateGame+":"):
+		b.handleCreateGame(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameList+":"):
+		b.handleGameList(ctx, cb)
+
+	case strings.HasPrefix(data, cbSelectGame+":"):
+		b.handleSelectGame(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameInfo+":"):
+		b.handleGameInfo(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameParticipants+":"):
+		b.handleGameParticipants(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameInvite+":"):
+		b.handleGameInvite(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameChangeParams+":"):
+		b.handleGameChangeParams(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameCancel+":"):
+		b.handleGameCancel(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameConfirmCancel+":"):
+		b.handleGameConfirmCancel(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameAccept+":"):
+		b.handleGameAccept(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameDecline+":"):
+		b.handleGameDecline(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameConfirmParticipation+":"):
+		b.handleGameConfirmParticipation(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRemoveParticipant+":"):
+		b.handleGameRemoveParticipant(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameBack+":"):
+		b.handleGameBack(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEditParam+":"):
+		b.handleGameEditParam(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameSelectParam+":"):
+		b.handleGameSelectParam(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameCreateConfirm+":"):
+		b.handleGameCreateConfirm(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameCreateCancel+":"):
+		b.handleGameCreateCancel(ctx, cb)
+	}
 }
 
 // handleTextMessage processes regular text messages based on the user's current state.
+// In group chats, regular text messages are ignored (no response).
+// Stateful workflows only operate in private chats.
 func (b *Bot) handleTextMessage(ctx context.Context, update tgbotapi.Update) {
 	msg := update.Message
 	if msg == nil || msg.Text == "" {
 		return
 	}
 
-	state := b.getState(msg.From.ID)
-	if state == nil || state.action == stateIdle {
-		b.sendText(msg.Chat.ID, "Используйте кнопки меню для навигации.")
+	// Ignore regular text messages in group chats.
+	if msg.Chat.Type == "group" || msg.Chat.Type == "supergroup" {
 		return
 	}
 
- 	switch state.action {
- 	case stateCreateClub:
- 		b.handleCreateClub(ctx, msg)
- 	case stateChangeName:
- 		b.handleChangeName(ctx, msg, state.clubID)
- 	case stateInviteMember:
- 		b.handleInviteMember(ctx, msg, state.clubID, msg.Text)
- 	case stateCreateGame:
- 		b.handleGameParamInput(ctx, msg, state)
- 	case stateGameInviteMember:
- 		b.handleGameInviteMember(ctx, msg, state.clubID, state.gameID, msg.Text)
- 	default:
- 		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
- 	}
+	state := b.getState(msg.From.ID)
+	if state == nil || state.action == stateIdle {
+		return
+	}
+
+	switch state.action {
+	case stateCreateClub:
+		b.handleCreateClub(ctx, msg)
+	case stateChangeName:
+		b.handleChangeName(ctx, msg, state.clubID)
+	case stateInviteMember:
+		b.handleInviteMember(ctx, msg, state.clubID, msg.Text)
+	case stateCreateGame:
+		b.handleGameParamInput(ctx, msg, state)
+	case stateGameInviteMember:
+		b.handleGameInviteMember(ctx, msg, state.clubID, state.gameID, msg.Text)
+	default:
+		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
+	}
 }
 
 // handleCreateClub creates a club with the name provided by the user.

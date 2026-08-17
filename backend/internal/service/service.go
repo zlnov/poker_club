@@ -13,20 +13,20 @@ import (
 type Permission string
 
 const (
-	PermViewClub           Permission = "view_club"
-	PermEditClub           Permission = "edit_club"
-	PermCloseClub          Permission = "close_club"
-	PermInviteMember       Permission = "invite_member"
-	PermListMembers        Permission = "list_members"
-	PermRemoveMember       Permission = "remove_member"
-	PermChangeMemberStatus Permission = "change_member_status"
-	PermAssignAdmin        Permission = "assign_admin"
-	PermRemoveAdmin        Permission = "remove_admin"
-	PermConfirmEntry       Permission = "confirm_entry"
-	PermCreateGame         Permission = "create_game"
-	PermEditGame           Permission = "edit_game"
-	PermCancelGame         Permission = "cancel_game"
-	PermInviteToGame       Permission = "invite_to_game"
+	PermViewClub               Permission = "view_club"
+	PermEditClub               Permission = "edit_club"
+	PermCloseClub              Permission = "close_club"
+	PermInviteMember           Permission = "invite_member"
+	PermListMembers            Permission = "list_members"
+	PermRemoveMember           Permission = "remove_member"
+	PermChangeMemberStatus     Permission = "change_member_status"
+	PermAssignAdmin            Permission = "assign_admin"
+	PermRemoveAdmin            Permission = "remove_admin"
+	PermConfirmEntry           Permission = "confirm_entry"
+	PermCreateGame             Permission = "create_game"
+	PermEditGame               Permission = "edit_game"
+	PermCancelGame             Permission = "cancel_game"
+	PermInviteToGame           Permission = "invite_to_game"
 	PermManageGameParticipants Permission = "manage_game_participants"
 )
 
@@ -151,6 +151,16 @@ func (s *Service) GetUserClubs(ctx context.Context, tgUserID int64) ([]*domain.C
 		return nil, err
 	}
 	return s.repos.Clubs.GetByOwner(ctx, player.ID)
+}
+
+// GetUserClubsAll returns all clubs where the given Telegram user is a member
+// (any role: owner, admin, or member).
+func (s *Service) GetUserClubsAll(ctx context.Context, tgUserID int64) ([]*domain.Club, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repos.Clubs.GetByPlayer(ctx, player.ID)
 }
 
 // BindGroupToClub binds a Telegram group chat to a club.
@@ -620,495 +630,495 @@ func (s *Service) checkPermission(ctx context.Context, tgUserID int64, clubID in
 		}
 	}
 
- 	if !allowed {
- 		s.log.Warn("access denied",
- 			"tg_user_id", tgUserID,
- 			"club_id", clubID,
- 			"role", member.Role,
- 			"required_permission", perm,
- 		)
- 		return errors.New("access denied: insufficient permissions")
- 	}
- 
- 	return nil
- }
- 
- // --- Game management ---
- 
- // CreateGame creates a new game in the specified club and invites all active
- // club members. The requesting user must have the create_game permission.
- // The game and its initial game_participants records are created atomically
- // in a single transaction.
- func (s *Service) CreateGame(ctx context.Context, tgUserID int64, clubID int64, game *domain.Game) (*domain.Game, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermCreateGame); err != nil {
- 		return nil, err
- 	}
- 
+	if !allowed {
+		s.log.Warn("access denied",
+			"tg_user_id", tgUserID,
+			"club_id", clubID,
+			"role", member.Role,
+			"required_permission", perm,
+		)
+		return errors.New("access denied: insufficient permissions")
+	}
+
+	return nil
+}
+
+// --- Game management ---
+
+// CreateGame creates a new game in the specified club and invites all active
+// club members. The requesting user must have the create_game permission.
+// The game and its initial game_participants records are created atomically
+// in a single transaction.
+func (s *Service) CreateGame(ctx context.Context, tgUserID int64, clubID int64, game *domain.Game) (*domain.Game, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermCreateGame); err != nil {
+		return nil, err
+	}
+
 	// Verify the club exists.
 	_, err := s.repos.Clubs.GetByID(ctx, clubID)
 	if err != nil {
 		return nil, err
 	}
- 
- 	// Check constraint 7.15: no active games in the club.
- 	_, err = s.repos.Games.GetActiveByClub(ctx, clubID)
- 	if err == nil {
- 		return nil, errors.New("в клубе уже есть активная игра")
- 	}
- 
- 	// Verify the banker is a club member.
- 	bankerMember, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, game.BankerID)
- 	if err != nil {
- 		return nil, errors.New("банкир не является участником клуба")
- 	}
- 	game.BankerID = bankerMember.ID
- 	game.ClubID = clubID
- 	game.Status = "planned"
- 
- 	// Get all active club members to invite.
- 	members, err := s.repos.ClubMembers.GetByClubWithPlayers(ctx, clubID)
- 	if err != nil {
- 		return nil, fmt.Errorf("failed to get club members: %w", err)
- 	}
- 
- 	var activeMembers []*domain.ClubMemberWithPlayer
- 	for _, m := range members {
- 		if m.Status == "active" {
- 			activeMembers = append(activeMembers, m)
- 		}
- 	}
- 
- 	// Create the game and game_participants atomically.
- 	gameID, err := s.repos.Games.Create(ctx, game)
- 	if err != nil {
- 		return nil, fmt.Errorf("failed to create game: %w", err)
- 	}
- 	game.ID = gameID
- 
- 	for _, m := range activeMembers {
- 		participant := &domain.GameParticipant{
- 			GameID:   gameID,
- 			PlayerID: m.PlayerID,
- 			Status:   "invited",
- 		}
- 		if _, err := s.repos.GameParticipants.Create(ctx, participant); err != nil {
- 			return nil, fmt.Errorf("failed to create game participant: %w", err)
- 		}
- 	}
- 
- 	s.log.Info("game created",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"game_type", game.GameType,
- 		"created_by", tgUserID,
- 	)
- 
- 	return game, nil
- }
- 
- // GetGame returns a game by ID if the user has permission to view it.
- func (s *Service) GetGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
- 		return nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	return game, nil
- }
- 
- // GetClubGames returns all games for a club.
- func (s *Service) GetClubGames(ctx context.Context, tgUserID int64, clubID int64) ([]*domain.Game, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
- 		return nil, err
- 	}
- 
- 	return s.repos.Games.GetByClub(ctx, clubID)
- }
- 
- // UpdateGame updates game parameters. Only allowed in planned status.
- // Only owner/admin can change parameters.
- func (s *Service) UpdateGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, game *domain.Game) (*domain.Game, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermEditGame); err != nil {
- 		return nil, err
- 	}
- 
- 	existing, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	if existing.ClubID != clubID {
- 		return nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if existing.Status != "planned" {
- 		return nil, errors.New("изменение параметров доступно только для игр в статусе planned")
- 	}
- 
- 	game.ID = existing.ID
- 	game.ClubID = existing.ClubID
- 	game.Status = existing.Status
- 	game.CreatedAt = existing.CreatedAt
- 
- 	if err := s.repos.Games.Update(ctx, game); err != nil {
- 		return nil, fmt.Errorf("failed to update game: %w", err)
- 	}
- 
- 	s.log.Info("game parameters updated",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"tg_user_id", tgUserID,
- 	)
- 
- 	return game, nil
- }
- 
- // CancelGame cancels a game. Only owner/admin can cancel.
- // Only allowed in planned status.
- func (s *Service) CancelGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) error {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermCancelGame); err != nil {
- 		return err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if game.Status != "planned" {
- 		return errors.New("отмена доступна только для игр в статусе planned")
- 	}
- 
- 	if err := s.repos.Games.Cancel(ctx, gameID); err != nil {
- 		return fmt.Errorf("failed to cancel game: %w", err)
- 	}
- 
- 	s.log.Info("game cancelled",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"tg_user_id", tgUserID,
- 	)
- 
- 	return nil
- }
- 
- // InviteToGame invites a club member to a game. Only owner/admin can invite.
- // The game must be in planned status.
- func (s *Service) InviteToGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, inviteeTgUserID int64) (*domain.Player, *domain.Game, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermInviteToGame); err != nil {
- 		return nil, nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if game.Status != "planned" {
- 		return nil, nil, errors.New("приглашение доступно только для игр в статусе planned")
- 	}
- 
- 	player, err := s.repos.Players.GetByTgUserID(ctx, inviteeTgUserID)
- 	if err != nil {
- 		return nil, nil, errors.New("пользователь не найден")
- 	}
- 
- 	// Check if player is an active club member.
- 	member, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID)
- 	if err != nil {
- 		return nil, nil, errors.New("пользователь не является участником клуба")
- 	}
- 	if member.Status != "active" {
- 		return nil, nil, errors.New("пользователь не является активным участником клуба")
- 	}
- 
- 	// Check if player is already a participant of this game.
- 	existing, _ := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
- 	if existing != nil {
- 		if existing.Status == "declined" {
- 			// Re-invite: update status to invited.
- 			existing.Status = "invited"
- 			if err := s.repos.GameParticipants.Update(ctx, existing); err != nil {
- 				return nil, nil, fmt.Errorf("failed to re-invite participant: %w", err)
- 			}
- 		} else {
- 			return nil, nil, errors.New("игрок уже является участником этой игры")
- 		}
- 	} else {
- 		participant := &domain.GameParticipant{
- 			GameID:   gameID,
- 			PlayerID: player.ID,
- 			Status:   "invited",
- 		}
- 		if _, err := s.repos.GameParticipants.Create(ctx, participant); err != nil {
- 			return nil, nil, fmt.Errorf("failed to create game participant: %w", err)
- 		}
- 	}
- 
- 	s.log.Info("member invited to game",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"player_id", player.ID,
- 		"inviter_tg_user_id", tgUserID,
- 	)
- 
- 	return player, game, nil
- }
- 
- // AcceptGameParticipation allows a player to accept a game invitation.
- // The player must have an invited status for the game.
- func (s *Service) AcceptGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Player, *domain.Game, []int64, error) {
- 	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
- 	if err != nil {
- 		return nil, nil, nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, nil, nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, nil, nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if game.Status != "planned" {
- 		return nil, nil, nil, errors.New("принять участие можно только для игр в статусе planned")
- 	}
- 
- 	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
- 	if err != nil {
- 		return nil, nil, nil, errors.New("вы не приглашены в эту игру")
- 	}
- 
- 	if participant.Status != "invited" {
- 		return nil, nil, nil, errors.New("приглашение уже обработано")
- 	}
- 
- 	if err := s.repos.GameParticipants.UpdateStatus(ctx, gameID, player.ID, "accepted"); err != nil {
- 		return nil, nil, nil, fmt.Errorf("failed to accept game participation: %w", err)
- 	}
- 
- 	// Get owner and admin tg_user_ids for notification.
- 	notifyIDs, err := s.getOwnerAndAdminTgUserIDs(ctx, clubID)
- 	if err != nil {
- 		return nil, nil, nil, err
- 	}
- 
- 	s.log.Info("game participation accepted",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"player_id", player.ID,
- 		"tg_user_id", tgUserID,
- 	)
- 
- 	return player, game, notifyIDs, nil
- }
- 
- // DeclineGameParticipation allows a player to decline a game invitation.
- // The player must have an invited or accepted status for the game.
- func (s *Service) DeclineGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, []int64, error) {
- 	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
- 	if err != nil {
- 		return nil, nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if game.Status != "planned" {
- 		return nil, nil, errors.New("отказаться можно только для игр в статусе planned")
- 	}
- 
- 	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
- 	if err != nil {
- 		return nil, nil, errors.New("вы не приглашены в эту игру")
- 	}
- 
- 	if participant.Status == "declined" {
- 		return nil, nil, errors.New("вы уже отказались от участия")
- 	}
- 
- 	if err := s.repos.GameParticipants.UpdateStatus(ctx, gameID, player.ID, "declined"); err != nil {
- 		return nil, nil, fmt.Errorf("failed to decline game participation: %w", err)
- 	}
- 
- 	// Get owner and admin tg_user_ids for notification.
- 	notifyIDs, err := s.getOwnerAndAdminTgUserIDs(ctx, clubID)
- 	if err != nil {
- 		return nil, nil, err
- 	}
- 
- 	s.log.Info("game participation declined",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"player_id", player.ID,
- 		"tg_user_id", tgUserID,
- 	)
- 
- 	return game, notifyIDs, nil
- }
- 
- // ConfirmGameParticipation allows owner/admin to confirm a player's accepted
- // invitation to a game. The player must have accepted status.
- func (s *Service) ConfirmGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) (*domain.Player, *domain.Game, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
- 		return nil, nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if game.Status != "planned" {
- 		return nil, nil, errors.New("подтверждение доступно только для игр в статусе planned")
- 	}
- 
- 	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
- 	if err != nil {
- 		return nil, nil, errors.New("игрок не является участником игры")
- 	}
- 
- 	if participant.Status != "accepted" {
- 		return nil, nil, errors.New("игрок не ожидает подтверждения")
- 	}
- 
- 	if err := s.repos.GameParticipants.UpdateStatus(ctx, gameID, playerID, "confirmed"); err != nil {
- 		return nil, nil, fmt.Errorf("failed to confirm game participation: %w", err)
- 	}
- 
- 	player, err := s.repos.Players.GetByID(ctx, playerID)
- 	if err != nil {
- 		return nil, nil, err
- 	}
- 
- 	s.log.Info("game participation confirmed",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"player_id", playerID,
- 		"tg_user_id", tgUserID,
- 	)
- 
- 	return player, game, nil
- }
- 
- // RemoveGameParticipant removes a player from a game. Only owner/admin can do this.
- // The game must be in planned status.
- func (s *Service) RemoveGameParticipant(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) (*domain.Player, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
- 		return nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	if game.Status != "planned" {
- 		return nil, errors.New("изменение состава доступно только для игр в статусе planned")
- 	}
- 
+
+	// Check constraint 7.15: no active games in the club.
+	_, err = s.repos.Games.GetActiveByClub(ctx, clubID)
+	if err == nil {
+		return nil, errors.New("в клубе уже есть активная игра")
+	}
+
+	// Verify the banker is a club member.
+	bankerMember, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, game.BankerID)
+	if err != nil {
+		return nil, errors.New("банкир не является участником клуба")
+	}
+	game.BankerID = bankerMember.ID
+	game.ClubID = clubID
+	game.Status = "planned"
+
+	// Get all active club members to invite.
+	members, err := s.repos.ClubMembers.GetByClubWithPlayers(ctx, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get club members: %w", err)
+	}
+
+	var activeMembers []*domain.ClubMemberWithPlayer
+	for _, m := range members {
+		if m.Status == "active" {
+			activeMembers = append(activeMembers, m)
+		}
+	}
+
+	// Create the game and game_participants atomically.
+	gameID, err := s.repos.Games.Create(ctx, game)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create game: %w", err)
+	}
+	game.ID = gameID
+
+	for _, m := range activeMembers {
+		participant := &domain.GameParticipant{
+			GameID:   gameID,
+			PlayerID: m.PlayerID,
+			Status:   "invited",
+		}
+		if _, err := s.repos.GameParticipants.Create(ctx, participant); err != nil {
+			return nil, fmt.Errorf("failed to create game participant: %w", err)
+		}
+	}
+
+	s.log.Info("game created",
+		"game_id", gameID,
+		"club_id", clubID,
+		"game_type", game.GameType,
+		"created_by", tgUserID,
+	)
+
+	return game, nil
+}
+
+// GetGame returns a game by ID if the user has permission to view it.
+func (s *Service) GetGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	return game, nil
+}
+
+// GetClubGames returns all games for a club.
+func (s *Service) GetClubGames(ctx context.Context, tgUserID int64, clubID int64) ([]*domain.Game, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+		return nil, err
+	}
+
+	return s.repos.Games.GetByClub(ctx, clubID)
+}
+
+// UpdateGame updates game parameters. Only allowed in planned status.
+// Only owner/admin can change parameters.
+func (s *Service) UpdateGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, game *domain.Game) (*domain.Game, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermEditGame); err != nil {
+		return nil, err
+	}
+
+	existing, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if existing.Status != "planned" {
+		return nil, errors.New("изменение параметров доступно только для игр в статусе planned")
+	}
+
+	game.ID = existing.ID
+	game.ClubID = existing.ClubID
+	game.Status = existing.Status
+	game.CreatedAt = existing.CreatedAt
+
+	if err := s.repos.Games.Update(ctx, game); err != nil {
+		return nil, fmt.Errorf("failed to update game: %w", err)
+	}
+
+	s.log.Info("game parameters updated",
+		"game_id", gameID,
+		"club_id", clubID,
+		"tg_user_id", tgUserID,
+	)
+
+	return game, nil
+}
+
+// CancelGame cancels a game. Only owner/admin can cancel.
+// Only allowed in planned status.
+func (s *Service) CancelGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) error {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermCancelGame); err != nil {
+		return err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.ClubID != clubID {
+		return errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "planned" {
+		return errors.New("отмена доступна только для игр в статусе planned")
+	}
+
+	if err := s.repos.Games.Cancel(ctx, gameID); err != nil {
+		return fmt.Errorf("failed to cancel game: %w", err)
+	}
+
+	s.log.Info("game cancelled",
+		"game_id", gameID,
+		"club_id", clubID,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// InviteToGame invites a club member to a game. Only owner/admin can invite.
+// The game must be in planned status.
+func (s *Service) InviteToGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, inviteeTgUserID int64) (*domain.Player, *domain.Game, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermInviteToGame); err != nil {
+		return nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "planned" {
+		return nil, nil, errors.New("приглашение доступно только для игр в статусе planned")
+	}
+
+	player, err := s.repos.Players.GetByTgUserID(ctx, inviteeTgUserID)
+	if err != nil {
+		return nil, nil, errors.New("пользователь не найден")
+	}
+
+	// Check if player is an active club member.
+	member, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID)
+	if err != nil {
+		return nil, nil, errors.New("пользователь не является участником клуба")
+	}
+	if member.Status != "active" {
+		return nil, nil, errors.New("пользователь не является активным участником клуба")
+	}
+
+	// Check if player is already a participant of this game.
+	existing, _ := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if existing != nil {
+		if existing.Status == "declined" {
+			// Re-invite: update status to invited.
+			existing.Status = "invited"
+			if err := s.repos.GameParticipants.Update(ctx, existing); err != nil {
+				return nil, nil, fmt.Errorf("failed to re-invite participant: %w", err)
+			}
+		} else {
+			return nil, nil, errors.New("игрок уже является участником этой игры")
+		}
+	} else {
+		participant := &domain.GameParticipant{
+			GameID:   gameID,
+			PlayerID: player.ID,
+			Status:   "invited",
+		}
+		if _, err := s.repos.GameParticipants.Create(ctx, participant); err != nil {
+			return nil, nil, fmt.Errorf("failed to create game participant: %w", err)
+		}
+	}
+
+	s.log.Info("member invited to game",
+		"game_id", gameID,
+		"club_id", clubID,
+		"player_id", player.ID,
+		"inviter_tg_user_id", tgUserID,
+	)
+
+	return player, game, nil
+}
+
+// AcceptGameParticipation allows a player to accept a game invitation.
+// The player must have an invited status for the game.
+func (s *Service) AcceptGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Player, *domain.Game, []int64, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "planned" {
+		return nil, nil, nil, errors.New("принять участие можно только для игр в статусе planned")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if err != nil {
+		return nil, nil, nil, errors.New("вы не приглашены в эту игру")
+	}
+
+	if participant.Status != "invited" {
+		return nil, nil, nil, errors.New("приглашение уже обработано")
+	}
+
+	if err := s.repos.GameParticipants.UpdateStatus(ctx, gameID, player.ID, "accepted"); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to accept game participation: %w", err)
+	}
+
+	// Get owner and admin tg_user_ids for notification.
+	notifyIDs, err := s.getOwnerAndAdminTgUserIDs(ctx, clubID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	s.log.Info("game participation accepted",
+		"game_id", gameID,
+		"club_id", clubID,
+		"player_id", player.ID,
+		"tg_user_id", tgUserID,
+	)
+
+	return player, game, notifyIDs, nil
+}
+
+// DeclineGameParticipation allows a player to decline a game invitation.
+// The player must have an invited or accepted status for the game.
+func (s *Service) DeclineGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, []int64, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "planned" {
+		return nil, nil, errors.New("отказаться можно только для игр в статусе planned")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if err != nil {
+		return nil, nil, errors.New("вы не приглашены в эту игру")
+	}
+
+	if participant.Status == "declined" {
+		return nil, nil, errors.New("вы уже отказались от участия")
+	}
+
+	if err := s.repos.GameParticipants.UpdateStatus(ctx, gameID, player.ID, "declined"); err != nil {
+		return nil, nil, fmt.Errorf("failed to decline game participation: %w", err)
+	}
+
+	// Get owner and admin tg_user_ids for notification.
+	notifyIDs, err := s.getOwnerAndAdminTgUserIDs(ctx, clubID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	s.log.Info("game participation declined",
+		"game_id", gameID,
+		"club_id", clubID,
+		"player_id", player.ID,
+		"tg_user_id", tgUserID,
+	)
+
+	return game, notifyIDs, nil
+}
+
+// ConfirmGameParticipation allows owner/admin to confirm a player's accepted
+// invitation to a game. The player must have accepted status.
+func (s *Service) ConfirmGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) (*domain.Player, *domain.Game, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
+		return nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "planned" {
+		return nil, nil, errors.New("подтверждение доступно только для игр в статусе planned")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
+	if err != nil {
+		return nil, nil, errors.New("игрок не является участником игры")
+	}
+
+	if participant.Status != "accepted" {
+		return nil, nil, errors.New("игрок не ожидает подтверждения")
+	}
+
+	if err := s.repos.GameParticipants.UpdateStatus(ctx, gameID, playerID, "confirmed"); err != nil {
+		return nil, nil, fmt.Errorf("failed to confirm game participation: %w", err)
+	}
+
+	player, err := s.repos.Players.GetByID(ctx, playerID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	s.log.Info("game participation confirmed",
+		"game_id", gameID,
+		"club_id", clubID,
+		"player_id", playerID,
+		"tg_user_id", tgUserID,
+	)
+
+	return player, game, nil
+}
+
+// RemoveGameParticipant removes a player from a game. Only owner/admin can do this.
+// The game must be in planned status.
+func (s *Service) RemoveGameParticipant(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) (*domain.Player, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "planned" {
+		return nil, errors.New("изменение состава доступно только для игр в статусе planned")
+	}
+
 	_, err = s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
 	if err != nil {
 		return nil, errors.New("игрок не является участником игры")
 	}
- 
- 	if err := s.repos.GameParticipants.Delete(ctx, gameID, playerID); err != nil {
- 		return nil, fmt.Errorf("failed to remove game participant: %w", err)
- 	}
- 
- 	player, err := s.repos.Players.GetByID(ctx, playerID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	s.log.Info("game participant removed",
- 		"game_id", gameID,
- 		"club_id", clubID,
- 		"player_id", playerID,
- 		"tg_user_id", tgUserID,
- 	)
- 
- 	return player, nil
- }
- 
- // GetGameParticipants returns all participants of a game with player info.
- func (s *Service) GetGameParticipants(ctx context.Context, tgUserID int64, clubID int64, gameID int64) ([]*domain.GameParticipantWithPlayer, error) {
- 	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
- 		return nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	return s.repos.GameParticipants.GetByGameWithPlayers(ctx, gameID)
- }
- 
- // GetGameParticipant returns a specific game participant with player info.
- func (s *Service) GetGameParticipant(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.GameParticipantWithPlayer, error) {
- 	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	game, err := s.repos.Games.GetByID(ctx, gameID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	if game.ClubID != clubID {
- 		return nil, errors.New("игра не принадлежит этому клубу")
- 	}
- 
- 	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
- 	if err != nil {
- 		return nil, errors.New("вы не являетесь участником этой игры")
- 	}
- 
- 	p, err := s.repos.Players.GetByID(ctx, participant.PlayerID)
- 	if err != nil {
- 		return nil, err
- 	}
- 
- 	return &domain.GameParticipantWithPlayer{
- 		GameParticipant: *participant,
- 		Player:          *p,
- 	}, nil
- }
+
+	if err := s.repos.GameParticipants.Delete(ctx, gameID, playerID); err != nil {
+		return nil, fmt.Errorf("failed to remove game participant: %w", err)
+	}
+
+	player, err := s.repos.Players.GetByID(ctx, playerID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.log.Info("game participant removed",
+		"game_id", gameID,
+		"club_id", clubID,
+		"player_id", playerID,
+		"tg_user_id", tgUserID,
+	)
+
+	return player, nil
+}
+
+// GetGameParticipants returns all participants of a game with player info.
+func (s *Service) GetGameParticipants(ctx context.Context, tgUserID int64, clubID int64, gameID int64) ([]*domain.GameParticipantWithPlayer, error) {
+	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	return s.repos.GameParticipants.GetByGameWithPlayers(ctx, gameID)
+}
+
+// GetGameParticipant returns a specific game participant with player info.
+func (s *Service) GetGameParticipant(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.GameParticipantWithPlayer, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if err != nil {
+		return nil, errors.New("вы не являетесь участником этой игры")
+	}
+
+	p, err := s.repos.Players.GetByID(ctx, participant.PlayerID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.GameParticipantWithPlayer{
+		GameParticipant: *participant,
+		Player:          *p,
+	}, nil
+}

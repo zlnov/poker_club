@@ -8,6 +8,7 @@ type ClubRepository interface {
 	Create(ctx context.Context, club *Club) (int64, error)
 	GetByID(ctx context.Context, id int64) (*Club, error)
 	GetByOwner(ctx context.Context, playerID int64) ([]*Club, error)
+	GetByPlayer(ctx context.Context, playerID int64) ([]*Club, error)
 	GetByTgChatID(ctx context.Context, tgChatID int64) (*Club, error)
 	UpdateName(ctx context.Context, id int64, name string) error
 	BindTgChatID(ctx context.Context, clubID, tgChatID int64) error

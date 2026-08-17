@@ -22,6 +22,7 @@ const (
 	cbBackMain     = "back_main"
 	cbBackClubs    = "back_clubs"
 	cbBindSelect   = "bind_select"
+	cbMenu         = "menu"
 
 	// Phase 02: club member management
 	cbInviteMember = "invite_member"
@@ -38,30 +39,30 @@ const (
 	cbBackMembers  = "back_members"
 
 	// Club menu structure
- 	cbClubMenu       = "club_menu"
- 	cbManageMenu     = "manage_menu"
- 	cbBackToClubMenu = "back_to_club_menu"
- 
- 	// Phase 03: game management
- 	cbCreateGame           = "create_game"
- 	cbGameList             = "game_list"
- 	cbSelectGame           = "select_game"
- 	cbGameInfo             = "game_info"
- 	cbGameParticipants     = "game_participants"
- 	cbGameInvite           = "game_invite"
- 	cbGameChangeParams     = "game_change_params"
- 	cbGameCancel           = "game_cancel"
- 	cbGameConfirmCancel    = "game_confirm_cancel"
- 	cbGameAccept           = "game_accept"
- 	cbGameDecline          = "game_decline"
- 	cbGameConfirmParticipation = "game_confirm_participation"
- 	cbGameRemoveParticipant    = "game_remove_participant"
- 	cbGameBack             = "game_back"
- 	cbGameEditParam        = "game_edit_param"
- 	cbGameSelectParam      = "game_select_param"
- 	cbGameCreateConfirm    = "game_create_confirm"
- 	cbGameCreateCancel     = "game_create_cancel"
- )
+	cbClubMenu       = "club_menu"
+	cbManageMenu     = "manage_menu"
+	cbBackToClubMenu = "back_to_club_menu"
+
+	// Phase 03: game management
+	cbCreateGame               = "create_game"
+	cbGameList                 = "game_list"
+	cbSelectGame               = "select_game"
+	cbGameInfo                 = "game_info"
+	cbGameParticipants         = "game_participants"
+	cbGameInvite               = "game_invite"
+	cbGameChangeParams         = "game_change_params"
+	cbGameCancel               = "game_cancel"
+	cbGameConfirmCancel        = "game_confirm_cancel"
+	cbGameAccept               = "game_accept"
+	cbGameDecline              = "game_decline"
+	cbGameConfirmParticipation = "game_confirm_participation"
+	cbGameRemoveParticipant    = "game_remove_participant"
+	cbGameBack                 = "game_back"
+	cbGameEditParam            = "game_edit_param"
+	cbGameSelectParam          = "game_select_param"
+	cbGameCreateConfirm        = "game_create_confirm"
+	cbGameCreateCancel         = "game_create_cancel"
+)
 
 // stateAction constants for user input state
 const (
@@ -70,14 +71,15 @@ const (
 	stateChangeName   = "change_name"
 	stateCloseConfirm = "close_confirm"
 	stateInviteMember = "invite_member"
- 
- 	// Phase 03: game creation states
- 	stateCreateGame       = "create_game"
- 	stateGameEditParam    = "game_edit_param"
- 	stateGameInviteMember = "game_invite_member"
- )
+
+	// Phase 03: game creation states
+	stateCreateGame       = "create_game"
+	stateGameEditParam    = "game_edit_param"
+	stateGameInviteMember = "game_invite_member"
+)
 
 // mainMenuKeyboardMarkup returns the inline keyboard for the main menu.
+// This is the Owner/Admin version with "Создать клуб".
 func mainMenuKeyboardMarkup() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -85,6 +87,19 @@ func mainMenuKeyboardMarkup() tgbotapi.InlineKeyboardMarkup {
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Мои клубы", cbMyClubs),
+		),
+	)
+}
+
+// privateMemberMenuKeyboard returns the inline keyboard for the main menu
+// in a private chat for a Member (no "Создать клуб" button).
+func privateMemberMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Мои клубы", cbMyClubs),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackMain),
 		),
 	)
 }
@@ -132,8 +147,10 @@ func bindClubSelectKeyboard(clubs []clubListItem, tgChatID int64) tgbotapi.Inlin
 }
 
 // clubMainMenuKeyboard returns the intermediate club menu with "Клуб" and
-// "Управление" buttons. "Управление" is only included for owner/admin roles.
-func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi.InlineKeyboardMarkup {
+// "Управление" buttons. In group chat, "Управление" is a URL button with a
+// deep link to private chat for all roles. In private chat, "Управление" is
+// a callback button only for owner/admin.
+func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool, botUsername string) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
 
@@ -141,9 +158,18 @@ func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotap
 		tgbotapi.NewInlineKeyboardButtonData("Клуб", fmt.Sprintf("%s:%s", cbClubMenu, id)),
 	))
 
-	if userRole == "owner" || userRole == "admin" {
+	if isPrivate {
+		// Private chat: show "Управление" as callback button for owner/admin only.
+		if userRole == "owner" || userRole == "admin" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Управление", fmt.Sprintf("%s:%s", cbManageMenu, id)),
+			))
+		}
+	} else {
+		// Group chat: show "Управление" as URL button (deep link) for all roles.
+		deepLink := fmt.Sprintf("https://t.me/%s?start=club_%s", botUsername, id)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Управление", fmt.Sprintf("%s:%s", cbManageMenu, id)),
+			tgbotapi.NewInlineKeyboardButtonURL("Управление", deepLink),
 		))
 	}
 
@@ -155,7 +181,6 @@ func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotap
 }
 
 // clubSubMenuKeyboard returns the "Клуб" submenu with info and member list.
-// "Закрыть клуб" is only included for the owner in a private chat.
 func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
@@ -168,12 +193,6 @@ func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi
 		tgbotapi.NewInlineKeyboardButtonData("Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
 	))
 
-	// if userRole == "owner" && isPrivate {
-	// 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-	// 		tgbotapi.NewInlineKeyboardButtonData("Закрыть клуб", fmt.Sprintf("%s:%s", cbCloseClub, id)),
-	// 	))
-	// }
-
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
 	))
@@ -185,35 +204,27 @@ func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi
 func manageSubMenuKeyboard(clubID int64, userRole string) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)
 
-	// return tgbotapi.NewInlineKeyboardMarkup(
-	// 	tgbotapi.NewInlineKeyboardRow(
-	// 		tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
-	// 	),
-	// 	tgbotapi.NewInlineKeyboardRow(
-	// 		tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
-	// 	),
-	// 	tgbotapi.NewInlineKeyboardRow(
-	// 		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
-	// 	),
-	// )
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 7)
 
-	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
+	))
 
- 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
- 		tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
- 	))
- 
- 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
- 		tgbotapi.NewInlineKeyboardButtonData("Создать игру", fmt.Sprintf("%s:%s", cbCreateGame, id)),
- 	))
- 
- 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
- 		tgbotapi.NewInlineKeyboardButtonData("Список игр", fmt.Sprintf("%s:%s", cbGameList, id)),
- 	))
- 
- 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
- 		tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
- 	))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Создать игру", fmt.Sprintf("%s:%s", cbCreateGame, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Список игр", fmt.Sprintf("%s:%s", cbGameList, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Состав клуба", fmt.Sprintf("%s:%s", cbListMembers, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Пригласить участников", fmt.Sprintf("%s:%s", cbInviteMember, id)),
+	))
 
 	if userRole == "owner" {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -226,7 +237,6 @@ func manageSubMenuKeyboard(clubID int64, userRole string) tgbotapi.InlineKeyboar
 	))
 
 	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
-
 }
 
 // memberListKeyboard builds an inline keyboard listing club members for selection.
@@ -380,8 +390,8 @@ func confirmEntryKeyboard(clubID, playerID int64) tgbotapi.InlineKeyboardMarkup 
 
 // gameCreationData stores intermediate game creation parameters.
 type gameCreationData struct {
-	gameType       string  // cash, tournament
-	bankerID       int64   // club_members.id
+	gameType       string // cash, tournament
+	bankerID       int64  // club_members.id
 	bankerName     string
 	currency       string
 	moneyModel     string

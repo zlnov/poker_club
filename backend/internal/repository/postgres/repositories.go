@@ -69,6 +69,31 @@ func (r *clubRepository) GetByOwner(ctx context.Context, playerID int64) ([]*dom
 	return clubs, nil
 }
 
+func (r *clubRepository) GetByPlayer(ctx context.Context, playerID int64) ([]*domain.Club, error) {
+	query := `
+		SELECT c.id, c.tg_chat_id, c.name, c.created_at, c.updated_at
+		FROM clubs c
+		JOIN club_members cm ON cm.club_id = c.id
+		WHERE cm.player_id = $1
+		ORDER BY c.created_at DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, playerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get clubs by player: %w", err)
+	}
+	defer rows.Close()
+
+	var clubs []*domain.Club
+	for rows.Next() {
+		var c domain.Club
+		if err := rows.Scan(&c.ID, &c.TgChatID, &c.Name, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan club: %w", err)
+		}
+		clubs = append(clubs, &c)
+	}
+	return clubs, nil
+}
+
 func (r *clubRepository) GetByTgChatID(ctx context.Context, tgChatID int64) (*domain.Club, error) {
 	query := `SELECT id, tg_chat_id, name, created_at, updated_at FROM clubs WHERE tg_chat_id = $1`
 	var c domain.Club
