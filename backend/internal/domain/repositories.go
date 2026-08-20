@@ -52,6 +52,7 @@ type GameRepository interface {
 	UpdateTimer(ctx context.Context, gameID int64, pausedAt *time.Time, pausedDuration *time.Duration, notified bool) error
 	ExtendDuration(ctx context.Context, gameID int64, additionalDuration time.Duration) error
 	GetExpiredTimerGames(ctx context.Context) ([]*Game, error)
+	FinishGame(ctx context.Context, gameID int64, endTime time.Time) error
 }
 
 // GameParticipantRepository defines operations for game participant persistence.
@@ -67,6 +68,7 @@ type GameParticipantRepository interface {
 	Delete(ctx context.Context, gameID, playerID int64) error
 	RegisterBuyIn(ctx context.Context, gameID, playerID int64, buyInCount int) error
 	RegisterRebuy(ctx context.Context, gameID, playerID int64, rebuyCount int) error
+	UpdateChipsEnd(ctx context.Context, gameID, playerID int64, chipsEnd float64) error
 }
 
 // EventRepository defines operations for event log persistence.
@@ -80,6 +82,8 @@ type EventRepository interface {
 // PlayerStatisticsRepository defines operations for player statistics persistence.
 type PlayerStatisticsRepository interface {
 	Ping(ctx context.Context) error
+	GetByPlayerAndClub(ctx context.Context, playerID, clubID int64) (*PlayerStatistics, error)
+	Upsert(ctx context.Context, stats *PlayerStatistics) error
 }
 
 // Repositories groups all repository interfaces.

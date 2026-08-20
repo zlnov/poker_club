@@ -523,6 +523,21 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 
 	case strings.HasPrefix(data, cbGameActiveBack+":"):
 		b.handleGameActiveBack(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEnd+":"):
+		b.handleGameEnd(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEndPlayer+":"):
+		b.handleGameEndPlayer(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEndCheckBank+":"):
+		b.handleGameEndCheckBank(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEndConfirm+":"):
+		b.handleGameEndConfirm(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEndFinish+":"):
+		b.handleGameEndFinish(ctx, cb)
 	}
 }
 
@@ -560,6 +575,8 @@ func (b *Bot) handleTextMessage(ctx context.Context, update tgbotapi.Update) {
 		b.handleGamePlayerStackInput(ctx, msg, state)
 	case stateGameRebuyFixCount:
 		b.handleGameRebuyFixCountInput(ctx, msg, state)
+	case stateGameEndChipsInput:
+		b.handleGameEndChipsInput(ctx, msg)
 	default:
 		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
 	}

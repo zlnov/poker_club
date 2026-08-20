@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"poker-club/backend/internal/domain"
@@ -1815,4 +1816,322 @@ func (s *Service) CheckExpiredTimers(ctx context.Context) ([]*TimerNotification,
 	}
 
 	return notifications, nil
+}
+
+// --- Phase 05: Game end ---
+
+// GameBankCheck holds the result of a bank correctness check for a Cash game.
+type GameBankCheck struct {
+	TotalBank   float64
+	TotalPayout float64
+	Difference  float64
+	Mismatch    bool
+}
+
+// participantResult holds the calculated results for a single participant
+// during game finish.
+type participantResult struct {
+	participant   *domain.GameParticipant
+	buyInAmount   float64
+	rebuyAmount   float64
+	totalInvested float64
+	payoutAmount  float64
+	profit        float64
+	roi           float64
+}
+
+// SetChipsEnd allows the banker/owner/admin to set the final chip stack
+// (chips_end) for a participant in an active game. The value must not be negative.
+func (s *Service) SetChipsEnd(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64, chipsEnd float64) error {
+	if chipsEnd < 0 {
+		return errors.New("количество фишек не может быть отрицательным")
+	}
+
+	game, member, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("ввод chips_end доступен только для активных игр")
+	}
+
+	// Verify the player is a participant.
+	if _, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID); err != nil {
+		return errors.New("игрок не является участником игры")
+	}
+
+	if err := s.repos.GameParticipants.UpdateChipsEnd(ctx, gameID, playerID, chipsEnd); err != nil {
+		return fmt.Errorf("failed to update chips_end: %w", err)
+	}
+
+	// Record a chips_set event for the final stack.
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  playerID,
+		Type:      "chips_set",
+		NewValue:  &chipsEnd,
+		CreatedBy: member.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		s.log.Warn("failed to create chips_set event", "error", err)
+	}
+
+	s.log.Info("chips_end set",
+		"game_id", gameID,
+		"player_id", playerID,
+		"chips_end", chipsEnd,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// CheckGameBank calculates the total bank (sum of all buy-in and rebuy amounts)
+// and the total payout (sum of chips_end × chip_value) for a game. It returns
+// whether they match and the difference.
+func (s *Service) CheckGameBank(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*GameBankCheck, error) {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.Status != "active" {
+		return nil, errors.New("проверка банка доступна только для активных игр")
+	}
+
+	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	totalBank := 0.0
+	totalPayout := 0.0
+
+	for _, p := range participants {
+		buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+		rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+		totalBank += buyInAmount + rebuyAmount
+
+		if p.ChipsEnd != nil {
+			totalPayout += *p.ChipsEnd * game.ChipValue
+		}
+	}
+
+	diff := totalPayout - totalBank
+	return &GameBankCheck{
+		TotalBank:   totalBank,
+		TotalPayout: totalPayout,
+		Difference:  diff,
+		Mismatch:    diff != 0,
+	}, nil
+}
+
+// FinishGame completes a Cash game: calculates payout_amount, profit, ROI,
+// place, and winner for each participant, distributes any bank mismatch among
+// players with positive profit, updates player statistics, records the end
+// time, and transitions the game to finished status.
+//
+// For Tournament games, this method returns an error as Tournament result
+// logic is not implemented in Phase 5.
+func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) error {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("завершение игры доступно только для активных игр")
+	}
+
+	// Tournament result logic is not implemented in Phase 5.
+	if game.GameType != "cash" {
+		return errors.New("завершение tournament игр не реализовано")
+	}
+
+	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	// Constraint 7.9: all players' results must be entered.
+	for _, p := range participants {
+		if p.ChipsEnd == nil {
+			return errors.New("не введены результаты всех игроков")
+		}
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	results := make([]*participantResult, 0, len(participants))
+	totalBank := 0.0
+	totalPayout := 0.0
+
+	for _, p := range participants {
+		buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+		rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+		totalInvested := buyInAmount + rebuyAmount
+		payoutAmount := *p.ChipsEnd * game.ChipValue
+		profit := payoutAmount - totalInvested
+
+		var roi float64
+		if totalInvested > 0 {
+			roi = (profit / totalInvested) * 100
+		}
+
+		totalBank += totalInvested
+		totalPayout += payoutAmount
+
+		results = append(results, &participantResult{
+			participant:   p,
+			buyInAmount:   buyInAmount,
+			rebuyAmount:   rebuyAmount,
+			totalInvested: totalInvested,
+			payoutAmount:  payoutAmount,
+			profit:        profit,
+			roi:           roi,
+		})
+	}
+
+	// Constraint 7.10 / Exception 8.7: if the bank doesn't match, distribute
+	// the difference equally among players with positive profit.
+	diff := totalPayout - totalBank
+	if diff != 0 {
+		var positiveProfit []*participantResult
+		for _, r := range results {
+			if r.profit > 0 {
+				positiveProfit = append(positiveProfit, r)
+			}
+		}
+
+		if len(positiveProfit) > 0 {
+			adjustment := -diff / float64(len(positiveProfit))
+			for _, r := range positiveProfit {
+				r.payoutAmount += adjustment
+				r.profit = r.payoutAmount - r.totalInvested
+				if r.totalInvested > 0 {
+					r.roi = (r.profit / r.totalInvested) * 100
+				}
+			}
+		}
+
+		s.log.Warn("bank mismatch resolved",
+			"game_id", gameID,
+			"difference", diff,
+			"adjusted_players", len(positiveProfit),
+		)
+	}
+
+	// Sort by descending profit, then by descending ROI.
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].profit != results[j].profit {
+			return results[i].profit > results[j].profit
+		}
+		return results[i].roi > results[j].roi
+	})
+
+	// Assign places. Players with equal profit and ROI get the same place.
+	place := 0
+	for i, r := range results {
+		if i == 0 || r.profit != results[i-1].profit || r.roi != results[i-1].roi {
+			place = i + 1
+		}
+		r.participant.PayoutAmount = &r.payoutAmount
+		r.participant.Place = &place
+	}
+
+	// Save calculated results to game_participants.
+	for _, r := range results {
+		if err := s.repos.GameParticipants.Update(ctx, r.participant); err != nil {
+			return fmt.Errorf("failed to save game participant results: %w", err)
+		}
+	}
+
+	// Update player statistics for each participant.
+	for _, r := range results {
+		if err := s.updatePlayerStatistics(ctx, r.participant.PlayerID, game.ClubID, r); err != nil {
+			s.log.Warn("failed to update player statistics",
+				"error", err,
+				"player_id", r.participant.PlayerID,
+				"game_id", gameID,
+			)
+		}
+	}
+
+	// Transition game to finished and record end time.
+	endTime := time.Now()
+	if err := s.repos.Games.FinishGame(ctx, gameID, endTime); err != nil {
+		return fmt.Errorf("failed to finish game: %w", err)
+	}
+
+	s.log.Info("game finished",
+		"game_id", gameID,
+		"club_id", clubID,
+		"tg_user_id", tgUserID,
+		"end_time", endTime,
+	)
+
+	return nil
+}
+
+// updatePlayerStatistics updates the cached aggregate statistics for a player
+// after a game finishes. It reads the existing statistics (if any), adds the
+// current game's values, recalculates derived metrics, and upserts.
+func (s *Service) updatePlayerStatistics(ctx context.Context, playerID, clubID int64, r *participantResult) error {
+	existing, err := s.repos.PlayerStatistics.GetByPlayerAndClub(ctx, playerID, clubID)
+	if err != nil {
+		// No existing statistics — start fresh.
+		existing = &domain.PlayerStatistics{
+			PlayerID: playerID,
+			ClubID:   clubID,
+		}
+	}
+
+	place := 0
+	if r.participant.Place != nil {
+		place = *r.participant.Place
+	}
+
+	stats := &domain.PlayerStatistics{
+		PlayerID:         playerID,
+		ClubID:           clubID,
+		TotalGames:       existing.TotalGames + 1,
+		TotalBuyInAmount: existing.TotalBuyInAmount + r.buyInAmount,
+		TotalRebuyAmount: existing.TotalRebuyAmount + r.rebuyAmount,
+		TotalRebuysCount: existing.TotalRebuysCount + r.participant.RebuyCount,
+		TotalInvested:    existing.TotalInvested + r.totalInvested,
+		TotalChips:       existing.TotalChips + *r.participant.ChipsEnd,
+		TotalProfit:      existing.TotalProfit + r.profit,
+		BiggestWin:       existing.BiggestWin,
+		BiggestLoss:      existing.BiggestLoss,
+		GamesWon:         existing.GamesWon,
+		Podiums:          existing.Podiums,
+		ROI:              existing.ROI,
+		ITM:              existing.ITM,
+	}
+
+	if r.profit > existing.BiggestWin {
+		stats.BiggestWin = r.profit
+	}
+	if r.profit < existing.BiggestLoss {
+		stats.BiggestLoss = r.profit
+	}
+	if place == 1 {
+		stats.GamesWon = existing.GamesWon + 1
+	}
+
+	// Recalculate ROI.
+	if stats.TotalInvested > 0 {
+		stats.ROI = (stats.TotalProfit / stats.TotalInvested) * 100
+	}
+
+	return s.repos.PlayerStatistics.Upsert(ctx, stats)
 }

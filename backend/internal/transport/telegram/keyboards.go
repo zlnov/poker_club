@@ -87,6 +87,13 @@ const (
 	cbGamePlayerStats      = "game_player_stats"
 	cbGameStats            = "game_stats"
 	cbGameActiveBack       = "game_active_back"
+
+	// Phase 05: game end
+	cbGameEnd           = "game_end"
+	cbGameEndPlayer     = "game_end_player"
+	cbGameEndCheckBank  = "game_end_check_bank"
+	cbGameEndConfirm    = "game_end_confirm"
+	cbGameEndFinish     = "game_end_finish"
 )
 
 // stateAction constants for user input state
@@ -103,8 +110,11 @@ const (
 	stateGameInviteMember = "game_invite_member"
 
 	// Phase 04: active game states
-	stateGamePlayerStack  = "game_player_stack"
+	stateGamePlayerStack   = "game_player_stack"
 	stateGameRebuyFixCount = "game_rebuy_fix_count"
+
+	// Phase 05: game end states
+	stateGameEndChipsInput = "game_end_chips_input"
 )
 
 // mainMenuKeyboardMarkup returns the inline keyboard for the main menu.
@@ -811,6 +821,9 @@ func activeGameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Статистика игры", fmt.Sprintf("%s:%s:%s", cbGameStats, cid, gid)),
 		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Завершить игру", fmt.Sprintf("%s:%s:%s", cbGameEnd, cid, gid)),
+		))
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -824,7 +837,7 @@ func activeGameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool
 		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
 	))
 
-	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
 // gameMonitorKeyboard returns the keyboard for the game monitor view.
@@ -855,6 +868,9 @@ func gameMonitorKeyboard(clubID, gameID int64, canManage bool, gameType string, 
 		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Статистика игры", fmt.Sprintf("%s:%s:%s", cbGameStats, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Завершить игру", fmt.Sprintf("%s:%s:%s", cbGameEnd, cid, gid)),
 		))
 	}
 
@@ -1148,4 +1164,81 @@ func formatTimerDisplay(game *domain.Game) string {
 		return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 	}
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+// --- Phase 05: Game end keyboards ---
+
+// gameEndKeyboard returns the inline keyboard for the game end screen.
+// Shows buttons for entering chips_end, checking the bank, and confirming
+// game completion. The "Завершить игру" button is only shown when all
+// participants have chips_end set.
+func gameEndKeyboard(clubID, gameID int64, allChipsEntered bool) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 5)
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Ввести chips_end", fmt.Sprintf("%s:%s:%s", cbGameEndPlayer, cid, gid)),
+	))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Проверить банк", fmt.Sprintf("%s:%s:%s", cbGameEndCheckBank, cid, gid)),
+	))
+
+	if allChipsEntered {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Завершить игру", fmt.Sprintf("%s:%s:%s", cbGameEndConfirm, cid, gid)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// gameEndPlayerSelectKeyboard builds an inline keyboard for selecting a player
+// to enter chips_end for the game end flow.
+func gameEndPlayerSelectKeyboard(clubID, gameID int64, participants []*domain.GameParticipantWithPlayer) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(participants)+1)
+
+	for _, p := range participants {
+		label := p.Player.FirstName
+		if p.Player.LastName != "" {
+			label += " " + p.Player.LastName
+		}
+		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
+			label += " (@" + p.Player.Nickname + ")"
+		}
+		chipsStr := "—"
+		if p.ChipsEnd != nil {
+			chipsStr = formatFloat(*p.ChipsEnd)
+		}
+		label += fmt.Sprintf(" [%s]", chipsStr)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameEndPlayer, cid, gid, p.PlayerID)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameEnd, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// gameEndConfirmKeyboard returns the confirm/cancel keyboard for game completion.
+func gameEndConfirmKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonData("Да", fmt.Sprintf("%s:%s:%s", cbGameEndFinish, cid, gid)),
+				tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameEnd, cid, gid)),
+			},
+		},
+	}
 }

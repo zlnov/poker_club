@@ -10,6 +10,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"poker-club/backend/internal/domain"
+	"poker-club/backend/internal/service"
 )
 
 // --- Phase 03: Game management handlers ---
@@ -1623,6 +1624,211 @@ func (b *Bot) handleGamePlayerStackInput(ctx context.Context, msg *tgbotapi.Mess
 	b.sendText(msg.Chat.ID, fmt.Sprintf("✅ Текущий стек сохранен: %s", strconv.FormatFloat(stack, 'f', -1, 64)))
 }
 
+// --- Phase 05: Game end handlers ---
+
+// handleGameEnd shows the game end screen with the list of participants and
+// their chips_end values, along with action buttons.
+func (b *Bot) handleGameEnd(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	allChipsEntered := true
+	for _, p := range participants {
+		if p.ChipsEnd == nil {
+			allChipsEntered = false
+			break
+		}
+	}
+
+	text := formatGameEndText(game, participants)
+	keyboard := gameEndKeyboard(clubID, gameID, allChipsEntered)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleGameEndPlayer handles the player selection for entering chips_end.
+// If a player_id is provided in the callback data, it asks for the chips_end
+// value. Otherwise, it shows the player selection keyboard.
+func (b *Bot) handleGameEndPlayer(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	parts := strings.Split(cb.Data, ":")
+	// Format: game_end_player:club_id:game_id or game_end_player:club_id:game_id:player_id
+
+	clubID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверный идентификатор клуба.")
+		return
+	}
+	gameID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверный идентификатор игры.")
+		return
+	}
+
+	if len(parts) >= 4 {
+		// Player selected — ask for chips_end input.
+		playerID, err := strconv.ParseInt(parts[3], 10, 64)
+		if err != nil {
+			b.sendText(cb.Message.Chat.ID, "Ошибка: неверный идентификатор игрока.")
+			return
+		}
+
+		b.setState(cb.From.ID, stateGameEndChipsInput, clubID)
+		b.mu.Lock()
+		b.states[cb.From.ID].gameID = gameID
+		b.states[cb.From.ID].playerID = playerID
+		b.mu.Unlock()
+
+		b.sendText(cb.Message.Chat.ID, "Введите итоговое количество фишек (chips_end):")
+		return
+	}
+
+	// Show player selection.
+	_, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := "Выберите игрока для ввода chips_end:"
+	keyboard := gameEndPlayerSelectKeyboard(clubID, gameID, participants)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleGameEndChipsInput processes the chips_end value entered by the banker.
+func (b *Bot) handleGameEndChipsInput(ctx context.Context, msg *tgbotapi.Message) {
+	tgUserID := msg.From.ID
+
+	b.mu.RLock()
+	state, exists := b.states[tgUserID]
+	b.mu.RUnlock()
+
+	if !exists || state.action != stateGameEndChipsInput {
+		b.sendText(msg.Chat.ID, "Введите /cancel для отмены.")
+		return
+	}
+
+	chipsEnd, err := strconv.ParseFloat(msg.Text, 64)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Введите число (например: 2450):")
+		return
+	}
+
+	if chipsEnd < 0 {
+		b.sendText(msg.Chat.ID, "Количество фишек не может быть отрицательным. Введите число:")
+		return
+	}
+
+	clubID := state.clubID
+	gameID := state.gameID
+	playerID := state.playerID
+
+	if err := b.svc.SetChipsEnd(ctx, tgUserID, clubID, gameID, playerID, chipsEnd); err != nil {
+		b.sendText(msg.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	b.setState(tgUserID, stateIdle, 0)
+
+	// Refresh the end game screen.
+	_, participants, err := b.svc.GetGameMonitor(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		b.sendText(msg.Chat.ID, fmt.Sprintf("✅ chips_end сохранен: %s", strconv.FormatFloat(chipsEnd, 'f', -1, 64)))
+		return
+	}
+
+	allChipsEntered := true
+	for _, p := range participants {
+		if p.ChipsEnd == nil {
+			allChipsEntered = false
+			break
+		}
+	}
+
+	keyboard := gameEndKeyboard(clubID, gameID, allChipsEntered)
+	b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("✅ chips_end сохранен: %s", strconv.FormatFloat(chipsEnd, 'f', -1, 64)), keyboard)
+}
+
+// handleGameEndCheckBank shows the bank check result for the game.
+func (b *Bot) handleGameEndCheckBank(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	bankCheck, err := b.svc.CheckGameBank(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := formatGameBankCheckText(bankCheck)
+	keyboard := gameEndKeyboard(clubID, gameID, false)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleGameEndConfirm shows a confirmation prompt before finishing the game.
+func (b *Bot) handleGameEndConfirm(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	// Check if all chips_end are entered.
+	_, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	allChipsEntered := true
+	for _, p := range participants {
+		if p.ChipsEnd == nil {
+			allChipsEntered = false
+			break
+		}
+	}
+
+	if !allChipsEntered {
+		b.sendText(cb.Message.Chat.ID, "Сначала введите chips_end для всех игроков.")
+		return
+	}
+
+	text := "⚠️ Вы уверены, что хотите завершить игру?\n\nВсе результаты будут рассчитаны автоматически."
+	keyboard := gameEndConfirmKeyboard(clubID, gameID)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleGameEndFinish performs the actual game finish.
+func (b *Bot) handleGameEndFinish(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	if err := b.svc.FinishGame(ctx, cb.From.ID, clubID, gameID); err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := "✅ Игра завершена!\n\nРезультаты рассчитаны и сохранены."
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("К игре", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
+		),
+	))
+}
+
 // --- Phase 04: Text formatting helpers ---
 
 // formatGameMonitorText formats the game monitor text for banker/owner/admin.
@@ -1972,5 +2178,41 @@ func formatGameInfo(game *domain.Game) string {
 	sb.WriteString(fmt.Sprintf("Min players: %d\n", game.MinPlayers))
 	sb.WriteString(fmt.Sprintf("Max players: %d\n", game.MaxPlayers))
 	sb.WriteString(fmt.Sprintf("Ranking: %s\n", game.RankingPrimary))
+	return sb.String()
+}
+
+// --- Phase 05: Text formatting helpers ---
+
+// formatGameEndText formats the game end screen text with participant list
+// and their chips_end values.
+func formatGameEndText(game *domain.Game, participants []*domain.GameParticipantWithPlayer) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🎲 Игра #%d\n", game.ID))
+	sb.WriteString(fmt.Sprintf("Тип: %s\n", gameTypeLabel(game.GameType)))
+	sb.WriteString(fmt.Sprintf("Статус: %s\n", game.Status))
+	sb.WriteString(fmt.Sprintf("\nУчастники (%d):\n", len(participants)))
+	for _, p := range participants {
+		name := memberShortName(p.Player)
+		chipsStr := "—"
+		if p.ChipsEnd != nil {
+			chipsStr = strconv.FormatFloat(*p.ChipsEnd, 'f', -1, 64)
+		}
+		sb.WriteString(fmt.Sprintf("  %s — chips_end: %s\n", name, chipsStr))
+	}
+	return sb.String()
+}
+
+// formatGameBankCheckText formats the bank check result text.
+func formatGameBankCheckText(bankCheck *service.GameBankCheck) string {
+	var sb strings.Builder
+	sb.WriteString("💰 Проверка банка\n\n")
+	sb.WriteString(fmt.Sprintf("Банк: %s\n", strconv.FormatFloat(bankCheck.TotalBank, 'f', -1, 64)))
+	sb.WriteString(fmt.Sprintf("Выплата: %s\n", strconv.FormatFloat(bankCheck.TotalPayout, 'f', -1, 64)))
+	if bankCheck.Mismatch {
+		sb.WriteString(fmt.Sprintf("\n⚠️ Суммы не сходятся! Разница: %s\n", strconv.FormatFloat(bankCheck.Difference, 'f', -1, 64)))
+		sb.WriteString("Разница будет распределена между игроками с положительным profit при завершении.")
+	} else {
+		sb.WriteString("\n✅ Суммы совпадают.")
+	}
 	return sb.String()
 }

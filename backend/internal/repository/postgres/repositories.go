@@ -554,7 +554,18 @@ func (r *gameRepository) ExtendDuration(ctx context.Context, gameID int64, addit
 	return nil
 }
 
-// GetExpiredTimerGames returns active games with a duration where the timer has expired
+// FinishGame transitions a game to finished status and records the end time.
+func (r *gameRepository) FinishGame(ctx context.Context, gameID int64, endTime time.Time) error {
+	query := `UPDATE games SET status = 'finished', end_time = $1 WHERE id = $2`
+	tag, err := r.db.Pool.Exec(ctx, query, endTime, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to finish game: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game not found: id=%d", gameID)
+	}
+	return nil
+}
 // (not paused and effective end time has passed) and notification has not been sent yet.
 func (r *gameRepository) GetExpiredTimerGames(ctx context.Context) ([]*domain.Game, error) {
 	query := `
@@ -793,6 +804,19 @@ func (r *gameParticipantRepository) RegisterRebuy(ctx context.Context, gameID, p
 	return nil
 }
 
+// UpdateChipsEnd sets the final chip stack for a game participant.
+func (r *gameParticipantRepository) UpdateChipsEnd(ctx context.Context, gameID, playerID int64, chipsEnd float64) error {
+	query := `UPDATE game_participants SET chips_end = $1 WHERE game_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, chipsEnd, gameID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to update chips_end: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game participant not found: game_id=%d, player_id=%d", gameID, playerID)
+	}
+	return nil
+}
+
 // eventRepository implements domain.EventRepository.
 type eventRepository struct {
 	db *DB
@@ -880,6 +904,65 @@ type playerStatisticsRepository struct {
 
 func (r *playerStatisticsRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
+}
+
+// GetByPlayerAndClub returns the cached aggregate statistics for a player in a club.
+func (r *playerStatisticsRepository) GetByPlayerAndClub(ctx context.Context, playerID, clubID int64) (*domain.PlayerStatistics, error) {
+	query := `
+		SELECT id, player_id, club_id, total_games, total_buy_in_amount, total_rebuy_amount,
+			total_rebuys_count, total_invested, total_chips, total_profit,
+			biggest_win, biggest_loss, games_won, podiums, roi, itm, updated_at
+		FROM player_statistics WHERE player_id = $1 AND club_id = $2
+	`
+	var ps domain.PlayerStatistics
+	err := r.db.Pool.QueryRow(ctx, query, playerID, clubID).Scan(
+		&ps.ID, &ps.PlayerID, &ps.ClubID, &ps.TotalGames, &ps.TotalBuyInAmount, &ps.TotalRebuyAmount,
+		&ps.TotalRebuysCount, &ps.TotalInvested, &ps.TotalChips, &ps.TotalProfit,
+		&ps.BiggestWin, &ps.BiggestLoss, &ps.GamesWon, &ps.Podiums, &ps.ROI, &ps.ITM, &ps.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("player statistics not found: player_id=%d, club_id=%d", playerID, clubID)
+		}
+		return nil, fmt.Errorf("failed to get player statistics: %w", err)
+	}
+	return &ps, nil
+}
+
+// Upsert inserts or updates player statistics for a given player and club.
+func (r *playerStatisticsRepository) Upsert(ctx context.Context, stats *domain.PlayerStatistics) error {
+	query := `
+		INSERT INTO player_statistics (
+			player_id, club_id, total_games, total_buy_in_amount, total_rebuy_amount,
+			total_rebuys_count, total_invested, total_chips, total_profit,
+			biggest_win, biggest_loss, games_won, podiums, roi, itm
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+		)
+		ON CONFLICT (player_id, club_id) DO UPDATE SET
+			total_games = EXCLUDED.total_games,
+			total_buy_in_amount = EXCLUDED.total_buy_in_amount,
+			total_rebuy_amount = EXCLUDED.total_rebuy_amount,
+			total_rebuys_count = EXCLUDED.total_rebuys_count,
+			total_invested = EXCLUDED.total_invested,
+			total_chips = EXCLUDED.total_chips,
+			total_profit = EXCLUDED.total_profit,
+			biggest_win = EXCLUDED.biggest_win,
+			biggest_loss = EXCLUDED.biggest_loss,
+			games_won = EXCLUDED.games_won,
+			podiums = EXCLUDED.podiums,
+			roi = EXCLUDED.roi,
+			itm = EXCLUDED.itm
+	`
+	_, err := r.db.Pool.Exec(ctx, query,
+		stats.PlayerID, stats.ClubID, stats.TotalGames, stats.TotalBuyInAmount, stats.TotalRebuyAmount,
+		stats.TotalRebuysCount, stats.TotalInvested, stats.TotalChips, stats.TotalProfit,
+		stats.BiggestWin, stats.BiggestLoss, stats.GamesWon, stats.Podiums, stats.ROI, stats.ITM,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upsert player statistics: %w", err)
+	}
+	return nil
 }
 
 // NewRepositories creates all repository implementations and returns them grouped.
