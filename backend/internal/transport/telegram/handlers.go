@@ -459,6 +459,70 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 
 	case strings.HasPrefix(data, cbGameCreateCancel+":"):
 		b.handleGameCreateCancel(ctx, cb)
+
+	// Phase 04: active game management
+	case strings.HasPrefix(data, cbGameStart+":"):
+		b.handleGameStart(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameCompleteBuyin+":"):
+		b.handleGameCompleteBuyin(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameMonitor+":"):
+		b.handleGameMonitor(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameBank+":"):
+		b.handleGameBank(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameExpenses+":"):
+		b.handleGameExpenses(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRebuy+":"):
+		b.handleGameRebuy(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRebuyPlayer+":"):
+		b.handleGameRebuyPlayer(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRebuyConfirm+":"):
+		b.handleGameRebuyConfirm(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRebuyManage+":"):
+		b.handleGameRebuyManage(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRebuyFixOp+":"):
+		b.handleGameRebuyFixOp(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameRebuyFixConfirm+":"):
+		b.handleGameRebuyFixConfirm(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameAddPlayer+":"):
+		b.handleGameAddPlayer(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameAddPlayerConfirm+":"):
+		b.handleGameAddPlayerConfirm(ctx, cb)
+
+	case strings.HasPrefix(data, cbGamePauseTimer+":"):
+		b.handleGamePauseTimer(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameResumeTimer+":"):
+		b.handleGameResumeTimer(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameExtend+":"):
+		b.handleGameExtend(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameExtendSelect+":"):
+		b.handleGameExtendSelect(ctx, cb)
+
+	case strings.HasPrefix(data, cbGamePlayerStack+":"):
+		b.handleGamePlayerStack(ctx, cb)
+
+	case strings.HasPrefix(data, cbGamePlayerStats+":"):
+		b.handleGamePlayerStats(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameStats+":"):
+		b.handleGameStats(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameActiveBack+":"):
+		b.handleGameActiveBack(ctx, cb)
 	}
 }
 
@@ -492,6 +556,10 @@ func (b *Bot) handleTextMessage(ctx context.Context, update tgbotapi.Update) {
 		b.handleGameParamInput(ctx, msg, state)
 	case stateGameInviteMember:
 		b.handleGameInviteMember(ctx, msg, state.clubID, state.gameID, msg.Text)
+	case stateGamePlayerStack:
+		b.handleGamePlayerStackInput(ctx, msg, state)
+	case stateGameRebuyFixCount:
+		b.handleGameRebuyFixCountInput(ctx, msg, state)
 	default:
 		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
 	}

@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -62,6 +63,30 @@ const (
 	cbGameSelectParam          = "game_select_param"
 	cbGameCreateConfirm        = "game_create_confirm"
 	cbGameCreateCancel         = "game_create_cancel"
+
+	// Phase 04: active game management
+	cbGameStart            = "game_start"
+	cbGameCompleteBuyin    = "game_complete_buyin"
+	cbGameMonitor          = "game_monitor"
+	cbGamePlayerMonitor    = "game_player_monitor"
+	cbGameBank             = "game_bank"
+	cbGameExpenses         = "game_expenses"
+	cbGameRebuy            = "game_rebuy"
+	cbGameRebuyPlayer      = "game_rebuy_player"
+	cbGameRebuyConfirm     = "game_rebuy_confirm"
+	cbGameRebuyManage      = "game_rebuy_manage"
+	cbGameRebuyFixOp       = "game_rebuy_fix_op"
+	cbGameRebuyFixConfirm  = "game_rebuy_fix_confirm"
+	cbGameAddPlayer        = "game_add_player"
+	cbGameAddPlayerConfirm = "game_add_player_confirm"
+	cbGamePauseTimer       = "game_pause_timer"
+	cbGameResumeTimer      = "game_resume_timer"
+	cbGameExtend           = "game_extend"
+	cbGameExtendSelect     = "game_extend_select"
+	cbGamePlayerStack      = "game_player_stack"
+	cbGamePlayerStats      = "game_player_stats"
+	cbGameStats            = "game_stats"
+	cbGameActiveBack       = "game_active_back"
 )
 
 // stateAction constants for user input state
@@ -76,6 +101,10 @@ const (
 	stateCreateGame       = "create_game"
 	stateGameEditParam    = "game_edit_param"
 	stateGameInviteMember = "game_invite_member"
+
+	// Phase 04: active game states
+	stateGamePlayerStack  = "game_player_stack"
+	stateGameRebuyFixCount = "game_rebuy_fix_count"
 )
 
 // mainMenuKeyboardMarkup returns the inline keyboard for the main menu.
@@ -557,10 +586,11 @@ func gameListKeyboard(clubID int64, games []*domain.Game) tgbotapi.InlineKeyboar
 }
 
 // gameMenuKeyboard returns the inline keyboard for the game menu.
-func gameMenuKeyboard(clubID, gameID int64, userRole string) tgbotapi.InlineKeyboardMarkup {
+// For planned games, shows "Начать игру" for banker/owner/admin.
+func gameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool, gameStatus string) tgbotapi.InlineKeyboardMarkup {
 	cid := strconv.FormatInt(clubID, 10)
 	gid := strconv.FormatInt(gameID, 10)
-	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 6)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 8)
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s:%s", cbGameInfo, cid, gid)),
@@ -569,7 +599,15 @@ func gameMenuKeyboard(clubID, gameID int64, userRole string) tgbotapi.InlineKeyb
 		tgbotapi.NewInlineKeyboardButtonData("Участники", fmt.Sprintf("%s:%s:%s", cbGameParticipants, cid, gid)),
 	))
 
-	if userRole == "owner" || userRole == "admin" {
+	canManage := isBanker || userRole == "owner" || userRole == "admin"
+
+	if gameStatus == "planned" && canManage {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Начать игру", fmt.Sprintf("%s:%s:%s", cbGameStart, cid, gid)),
+		))
+	}
+
+	if canManage {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Пригласить", fmt.Sprintf("%s:%s:%s", cbGameInvite, cid, gid)),
 		))
@@ -730,4 +768,384 @@ func boolYesNo(b bool) string {
 		return "Да"
 	}
 	return "Нет"
+}
+
+// --- Phase 04: Active game keyboards ---
+
+// activeGameMenuKeyboard returns the inline keyboard for an active game.
+// Shows different options based on user role and whether they are the banker.
+func activeGameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool, gameType string, hasTimer bool) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 12)
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Монитор игры", fmt.Sprintf("%s:%s:%s", cbGameMonitor, cid, gid)),
+	))
+
+	canManage := isBanker || userRole == "owner" || userRole == "admin"
+
+	if canManage {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Текущий банк", fmt.Sprintf("%s:%s:%s", cbGameBank, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Расходы игроков", fmt.Sprintf("%s:%s:%s", cbGameExpenses, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Rebuy", fmt.Sprintf("%s:%s:%s", cbGameRebuy, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Управление Rebuy", fmt.Sprintf("%s:%s:%s", cbGameRebuyManage, cid, gid)),
+		))
+		if gameType == "cash" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Добавить игрока", fmt.Sprintf("%s:%s:%s", cbGameAddPlayer, cid, gid)),
+			))
+		}
+		if hasTimer {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Пауза", fmt.Sprintf("%s:%s:%s", cbGamePauseTimer, cid, gid)),
+			))
+		}
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Статистика игры", fmt.Sprintf("%s:%s:%s", cbGameStats, cid, gid)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Моя статистика", fmt.Sprintf("%s:%s:%s", cbGamePlayerStats, cid, gid)),
+	))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Ввести текущий стек", fmt.Sprintf("%s:%s:%s", cbGamePlayerStack, cid, gid)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// gameMonitorKeyboard returns the keyboard for the game monitor view.
+func gameMonitorKeyboard(clubID, gameID int64, canManage bool, gameType string, hasTimer bool) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 8)
+
+	if canManage {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Текущий банк", fmt.Sprintf("%s:%s:%s", cbGameBank, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Расходы игроков", fmt.Sprintf("%s:%s:%s", cbGameExpenses, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Rebuy", fmt.Sprintf("%s:%s:%s", cbGameRebuy, cid, gid)),
+		))
+		if gameType == "cash" {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Добавить игрока", fmt.Sprintf("%s:%s:%s", cbGameAddPlayer, cid, gid)),
+			))
+		}
+		if hasTimer {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Пауза", fmt.Sprintf("%s:%s:%s", cbGamePauseTimer, cid, gid)),
+			))
+		}
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Статистика игры", fmt.Sprintf("%s:%s:%s", cbGameStats, cid, gid)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Моя статистика", fmt.Sprintf("%s:%s:%s", cbGamePlayerStats, cid, gid)),
+	))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Ввести текущий стек", fmt.Sprintf("%s:%s:%s", cbGamePlayerStack, cid, gid)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// gameCompleteBuyinKeyboard returns the keyboard after game start with buy-in registered.
+func gameCompleteBuyinKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Готово", fmt.Sprintf("%s:%s:%s", cbGameCompleteBuyin, cid, gid)),
+		),
+	)
+}
+
+// rebuyPlayerSelectKeyboard builds an inline keyboard for selecting a player to rebuy.
+func rebuyPlayerSelectKeyboard(clubID, gameID int64, participants []*domain.GameParticipantWithPlayer) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(participants)+1)
+
+	for _, p := range participants {
+		label := p.Player.FirstName
+		if p.Player.LastName != "" {
+			label += " " + p.Player.LastName
+		}
+		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
+			label += " (@" + p.Player.Nickname + ")"
+		}
+		label += fmt.Sprintf(" [Rebuy: %d]", p.RebuyCount)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameRebuyPlayer, cid, gid, p.PlayerID)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// rebuyConfirmKeyboard returns the confirm/cancel keyboard for a rebuy operation.
+func rebuyConfirmKeyboard(clubID, gameID, playerID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	pid := strconv.FormatInt(playerID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Подтвердить Rebuy", fmt.Sprintf("%s:%s:%s:%s", cbGameRebuyConfirm, cid, gid, pid)),
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameRebuy, cid, gid)),
+		),
+	)
+}
+
+// rebuyManagePlayerSelectKeyboard builds an inline keyboard for selecting a player
+// to manage/fix rebuy operations.
+func rebuyManagePlayerSelectKeyboard(clubID, gameID int64, participants []*domain.GameParticipantWithPlayer) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(participants)+1)
+
+	for _, p := range participants {
+		label := p.Player.FirstName
+		if p.Player.LastName != "" {
+			label += " " + p.Player.LastName
+		}
+		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
+			label += " (@" + p.Player.Nickname + ")"
+		}
+		label += fmt.Sprintf(" [Rebuy: %d]", p.RebuyCount)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameRebuyFixOp, cid, gid, p.PlayerID)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// rebuyFixOpKeyboard builds an inline keyboard for selecting a rebuy event to fix.
+func rebuyFixOpKeyboard(clubID, gameID, playerID int64, events []*domain.Event) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	pid := strconv.FormatInt(playerID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(events)+1)
+
+	for _, e := range events {
+		label := fmt.Sprintf("Rebuy #%d — %s", e.ID, formatEventValue(e.NewValue))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%s:%d", cbGameRebuyFixConfirm, cid, gid, pid, e.ID)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameRebuyManage, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// rebuyFixConfirmKeyboard returns the keyboard for confirming a rebuy fix.
+func rebuyFixConfirmKeyboard(clubID, gameID, playerID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameRebuyManage, cid, gid)),
+		),
+	)
+}
+
+// addPlayerSelectKeyboard builds an inline keyboard for selecting a club member to add to the game.
+func addPlayerSelectKeyboard(clubID, gameID int64, members []*domain.ClubMemberWithPlayer) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(members)+1)
+
+	for _, m := range members {
+		if m.Status != "active" {
+			continue
+		}
+		label := m.Player.FirstName
+		if m.Player.LastName != "" {
+			label += " " + m.Player.LastName
+		}
+		if m.Player.Nickname != "" && m.Player.Nickname != m.Player.FirstName {
+			label += " (@" + m.Player.Nickname + ")"
+		}
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameAddPlayerConfirm, cid, gid, m.PlayerID)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// timerControlKeyboard returns the pause/resume timer keyboard.
+func timerControlKeyboard(clubID, gameID int64, isPaused bool) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	var btnText, cb string
+	if isPaused {
+		btnText = "Продолжить"
+		cb = cbGameResumeTimer
+	} else {
+		btnText = "Пауза"
+		cb = cbGamePauseTimer
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(btnText, fmt.Sprintf("%s:%s:%s", cb, cid, gid)),
+		),
+	)
+}
+
+// gameExtendKeyboard returns the extend game keyboard.
+func gameExtendKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Продлить игру", fmt.Sprintf("%s:%s:%s", cbGameExtend, cid, gid)),
+		),
+	)
+}
+
+// gameExtendSelectKeyboard returns the extension duration selection keyboard.
+func gameExtendSelectKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("30 мин", fmt.Sprintf("%s:%s:%s:30", cbGameExtendSelect, cid, gid)),
+			tgbotapi.NewInlineKeyboardButtonData("60 мин", fmt.Sprintf("%s:%s:%s:60", cbGameExtendSelect, cid, gid)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("120 мин", fmt.Sprintf("%s:%s:%s:120", cbGameExtendSelect, cid, gid)),
+		),
+	)
+}
+
+// playerStackKeyboard returns the keyboard for entering current stack.
+func playerStackKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+		),
+	)
+}
+
+// playerStatsKeyboard returns the keyboard for the player statistics view.
+func playerStatsKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+		),
+	)
+}
+
+// gameStatsKeyboard returns the keyboard for the game statistics view.
+func gameStatsKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+		),
+	)
+}
+
+// gameBankKeyboard returns the keyboard for the current bank view.
+func gameBankKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameMonitor, cid, gid)),
+		),
+	)
+}
+
+// gameExpensesKeyboard returns the keyboard for the player expenses view.
+func gameExpensesKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameMonitor, cid, gid)),
+		),
+	)
+}
+
+// formatEventValue formats a float64 pointer for display.
+func formatEventValue(v *float64) string {
+	if v == nil {
+		return "—"
+	}
+	return strconv.FormatFloat(*v, 'f', -1, 64)
+}
+
+// formatTimerDisplay formats the remaining time for display.
+func formatTimerDisplay(game *domain.Game) string {
+	if game.Duration == nil {
+		return ""
+	}
+
+	elapsed := time.Since(game.StartTime)
+	pausedDuration := time.Duration(0)
+	if game.TimerPausedDuration != nil {
+		pausedDuration = *game.TimerPausedDuration
+	}
+	if game.TimerPausedAt != nil {
+		pausedDuration += time.Since(*game.TimerPausedAt)
+	}
+
+	remaining := *game.Duration - elapsed + pausedDuration
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	hours := int(remaining.Hours())
+	minutes := int(remaining.Minutes()) % 60
+	seconds := int(remaining.Seconds()) % 60
+
+	if hours > 0 {
+		return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }

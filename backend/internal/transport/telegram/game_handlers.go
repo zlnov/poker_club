@@ -1005,13 +1005,33 @@ func (b *Bot) sendGameInvitations(ctx context.Context, tgUserID, clubID, gameID 
 	}
 }
 
-// gameMenuKeyboard is a helper that wraps gameMenuKeyboard with role lookup.
+// gameMenuKeyboard is a helper that wraps gameMenuKeyboard with role and banker lookup.
 func (b *Bot) gameMenuKeyboard(ctx context.Context, clubID, gameID int64, tgUserID int64) tgbotapi.InlineKeyboardMarkup {
 	userRole := ""
 	if role, err := b.svc.GetUserRole(ctx, tgUserID, clubID); err == nil {
 		userRole = role
 	}
-	return gameMenuKeyboard(clubID, gameID, userRole)
+
+	game, err := b.svc.GetGame(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return gameMenuKeyboard(clubID, gameID, userRole, false, "planned")
+	}
+
+	isBanker := false
+	player, pErr := b.svc.GetPlayerByTgUserID(ctx, tgUserID)
+	if pErr == nil {
+		member, mErr := b.svc.GetClubMember(ctx, clubID, player.ID)
+		if mErr == nil && member.ID == game.BankerID {
+			isBanker = true
+		}
+	}
+
+	if game.Status == "active" {
+		hasTimer := game.Duration != nil
+		return activeGameMenuKeyboard(clubID, gameID, userRole, isBanker, game.GameType, hasTimer)
+	}
+
+	return gameMenuKeyboard(clubID, gameID, userRole, isBanker, game.Status)
 }
 
 // paramPrompt returns the prompt text for a given parameter.
@@ -1083,6 +1103,849 @@ func memberShortName(p domain.Player) string {
 		name += " " + p.LastName
 	}
 	return name
+}
+
+// --- Phase 04: Active game handlers ---
+
+// handleGameStart starts a planned game, registers buy-ins, and transitions to active.
+func (b *Bot) handleGameStart(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	_, err = b.svc.StartGame(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка при запуске игры: %v", err))
+		return
+	}
+
+	// Count confirmed/accepted participants.
+	participants, _ := b.svc.GetGameParticipants(ctx, cb.From.ID, clubID, gameID)
+	buyInRegistered := 0
+	for _, p := range participants {
+		if p.Status == "confirmed" || p.Status == "accepted" {
+			buyInRegistered++
+		}
+	}
+
+	text := fmt.Sprintf("🎲 Игра #%d начата!\n\nBuy-in зарегистрирован для %d/%d игроков.", gameID, buyInRegistered, len(participants))
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameCompleteBuyinKeyboard(clubID, gameID))
+
+	b.log.Info("game started", "game_id", gameID, "club_id", clubID, "tg_user_id", cb.From.ID)
+}
+
+// handleGameCompleteBuyin transitions from the buy-in registration screen to the game monitor.
+func (b *Bot) handleGameCompleteBuyin(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	currentStacks, _ := b.svc.GetCurrentStacks(ctx, cb.From.ID, clubID, gameID)
+	text := formatGameMonitorText(game, participants, currentStacks)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameMonitorKeyboard(clubID, gameID, true, game.GameType, game.Duration != nil))
+}
+
+// handleGameMonitor shows the game monitor for banker/owner/admin or player monitor for regular players.
+func (b *Bot) handleGameMonitor(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, err := b.svc.GetGame(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	// Check if user is banker/owner/admin.
+	isBankerOrAdmin := false
+	player, pErr := b.svc.GetPlayerByTgUserID(ctx, cb.From.ID)
+	if pErr == nil {
+		member, mErr := b.svc.GetClubMember(ctx, clubID, player.ID)
+		if mErr == nil && (member.Role == "owner" || member.Role == "admin" || member.ID == game.BankerID) {
+			isBankerOrAdmin = true
+		}
+	}
+
+	if isBankerOrAdmin {
+		participants, err := b.svc.GetGameParticipants(ctx, cb.From.ID, clubID, gameID)
+		if err != nil {
+			b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+			return
+		}
+		currentStacks, _ := b.svc.GetCurrentStacks(ctx, cb.From.ID, clubID, gameID)
+		text := formatGameMonitorText(game, participants, currentStacks)
+		b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameMonitorKeyboard(clubID, gameID, true, game.GameType, game.Duration != nil))
+	} else {
+		// Player monitor.
+		game, participant, err := b.svc.GetPlayerGameMonitor(ctx, cb.From.ID, clubID, gameID)
+		if err != nil {
+			b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+			return
+		}
+
+		currentStacks, _ := b.svc.GetCurrentStacks(ctx, cb.From.ID, clubID, gameID)
+		var currentStack *float64
+		if stack, ok := currentStacks[participant.PlayerID]; ok {
+			currentStack = &stack
+		}
+		text := formatPlayerMonitorText(game, participant, currentStack)
+		b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, playerMonitorKeyboard(clubID, gameID))
+	}
+}
+
+// handleGameBank shows the current bank for the game.
+func (b *Bot) handleGameBank(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := formatGameBankText(game, participants)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameBankKeyboard(clubID, gameID))
+}
+
+// handleGameExpenses shows the player expenses for the game.
+func (b *Bot) handleGameExpenses(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := formatGameExpensesText(game, participants)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameExpensesKeyboard(clubID, gameID))
+}
+
+// handleGameRebuy shows the player selection for rebuy.
+func (b *Bot) handleGameRebuy(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	participants, err := b.svc.GetGameParticipants(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := "Выберите игрока для Rebuy:"
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, rebuyPlayerSelectKeyboard(clubID, gameID, participants))
+}
+
+// handleGameRebuyPlayer shows the player info and confirm button for rebuy.
+func (b *Bot) handleGameRebuyPlayer(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, playerID, err := parseCallbackData3(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetGameMonitor(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	var participant *domain.GameParticipantWithPlayer
+	for _, p := range participants {
+		if p.PlayerID == playerID {
+			participant = p
+			break
+		}
+	}
+	if participant == nil {
+		b.sendText(cb.Message.Chat.ID, "Игрок не найден в игре.")
+		return
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	maxRebuysStr := "неограниченно"
+	if game.MaxRebuys != nil {
+		maxRebuysStr = strconv.Itoa(*game.MaxRebuys)
+	}
+
+	text := fmt.Sprintf("Игрок: %s\n\nRebuy: %s\nВыполнено: %d\nМаксимум: %s",
+		memberShortName(participant.Player),
+		strconv.FormatFloat(rebuyPrice, 'f', -1, 64),
+		participant.RebuyCount,
+		maxRebuysStr,
+	)
+
+	if game.MaxRebuys != nil && participant.RebuyCount >= *game.MaxRebuys {
+		text += "\n\nМаксимальное количество Rebuy достигнуто."
+		b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, rebuyPlayerSelectKeyboard(clubID, gameID, participants))
+	} else {
+		b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, rebuyConfirmKeyboard(clubID, gameID, playerID))
+	}
+}
+
+// handleGameRebuyConfirm registers a rebuy for the selected player.
+func (b *Bot) handleGameRebuyConfirm(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, playerID, err := parseCallbackData3(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	if err := b.svc.RegisterRebuy(ctx, cb.From.ID, clubID, gameID, playerID); err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка при регистрации Rebuy: %v", err))
+		return
+	}
+
+	// Show updated player list.
+	participants, _ := b.svc.GetGameParticipants(ctx, cb.From.ID, clubID, gameID)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "✅ Rebuy зарегистрирован.", rebuyPlayerSelectKeyboard(clubID, gameID, participants))
+}
+
+// handleGameRebuyManage shows the player selection for rebuy management.
+func (b *Bot) handleGameRebuyManage(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	participants, err := b.svc.GetGameParticipants(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	// Filter to only players with rebuy_count > 0.
+	var rebuyParticipants []*domain.GameParticipantWithPlayer
+	for _, p := range participants {
+		if p.RebuyCount > 0 {
+			rebuyParticipants = append(rebuyParticipants, p)
+		}
+	}
+
+	if len(rebuyParticipants) == 0 {
+		b.sendText(cb.Message.Chat.ID, "Нет игроков с Rebuy.")
+		return
+	}
+
+	text := "Выберите игрока для управления Rebuy:"
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, rebuyManagePlayerSelectKeyboard(clubID, gameID, rebuyParticipants))
+}
+
+// handleGameRebuyFixOp shows the list of rebuy events for a player.
+func (b *Bot) handleGameRebuyFixOp(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, playerID, err := parseCallbackData3(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	events, err := b.svc.GetRebuyEvents(ctx, cb.From.ID, clubID, gameID, playerID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	if len(events) == 0 {
+		b.sendText(cb.Message.Chat.ID, "Нет событий Rebuy для этого игрока.")
+		return
+	}
+
+	text := "Выберите событие Rebuy для исправления:"
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, rebuyFixOpKeyboard(clubID, gameID, playerID, events))
+}
+
+// handleGameRebuyFixConfirm starts the rebuy fix flow by asking for new count.
+func (b *Bot) handleGameRebuyFixConfirm(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, playerID, _, err := parseCallbackData4(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	b.setState(cb.From.ID, stateGameRebuyFixCount, clubID)
+	b.mu.Lock()
+	b.states[cb.From.ID].gameID = gameID
+	b.states[cb.From.ID].playerID = playerID
+	b.mu.Unlock()
+
+	b.sendText(cb.Message.Chat.ID, "Введите новое количество Rebuy:")
+}
+
+// handleGameRebuyFixCountInput processes the rebuy count input and applies the fix.
+func (b *Bot) handleGameRebuyFixCountInput(ctx context.Context, msg *tgbotapi.Message, state *userState) {
+	count, err := strconv.Atoi(strings.TrimSpace(msg.Text))
+	if err != nil || count < 0 {
+		b.sendText(msg.Chat.ID, "Введите корректное число.")
+		return
+	}
+
+	if err := b.svc.FixRebuy(ctx, msg.From.ID, state.clubID, state.gameID, state.playerID, count); err != nil {
+		b.sendText(msg.Chat.ID, fmt.Sprintf("Ошибка при исправлении Rebuy: %v", err))
+		return
+	}
+
+	b.setState(msg.From.ID, stateIdle, 0)
+	b.sendText(msg.Chat.ID, "✅ Rebuy исправлен.")
+}
+
+// handleGameAddPlayer shows the club members available to add to the game.
+func (b *Bot) handleGameAddPlayer(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	members, err := b.svc.GetClubMembers(ctx, cb.From.ID, clubID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	// Filter to active members not already in the game.
+	participants, _ := b.svc.GetGameParticipants(ctx, cb.From.ID, clubID, gameID)
+	participantMap := make(map[int64]bool)
+	for _, p := range participants {
+		participantMap[p.PlayerID] = true
+	}
+
+	var availableMembers []*domain.ClubMemberWithPlayer
+	for _, m := range members {
+		if m.Status == "active" && !participantMap[m.PlayerID] {
+			availableMembers = append(availableMembers, m)
+		}
+	}
+
+	if len(availableMembers) == 0 {
+		b.sendText(cb.Message.Chat.ID, "Нет доступных игроков для добавления.")
+		return
+	}
+
+	text := "Выберите игрока для добавления:"
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, addPlayerSelectKeyboard(clubID, gameID, availableMembers))
+}
+
+// handleGameAddPlayerConfirm adds the selected player to the game.
+func (b *Bot) handleGameAddPlayerConfirm(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, playerID, err := parseCallbackData3(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	if err := b.svc.AddPlayerToGame(ctx, cb.From.ID, clubID, gameID, playerID); err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка при добавлении игрока: %v", err))
+		return
+	}
+
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "✅ Игрок добавлен в игру.", addPlayerSelectKeyboard(clubID, gameID, nil))
+}
+
+// handleGamePauseTimer pauses the game timer.
+func (b *Bot) handleGamePauseTimer(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	if err := b.svc.PauseTimer(ctx, cb.From.ID, clubID, gameID); err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка при паузе таймера: %v", err))
+		return
+	}
+
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "⏸ Таймер приостановлен.", timerControlKeyboard(clubID, gameID, true))
+}
+
+// handleGameResumeTimer resumes the game timer.
+func (b *Bot) handleGameResumeTimer(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	if err := b.svc.ResumeTimer(ctx, cb.From.ID, clubID, gameID); err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка при возобновлении таймера: %v", err))
+		return
+	}
+
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "▶️ Таймер возобновлен.", timerControlKeyboard(clubID, gameID, false))
+}
+
+// handleGameExtend shows the extension duration options.
+func (b *Bot) handleGameExtend(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Выберите продолжительность продления:", gameExtendSelectKeyboard(clubID, gameID))
+}
+
+// handleGameExtendSelect extends the game by the selected duration.
+func (b *Bot) handleGameExtendSelect(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, minutes, err := parseCallbackData3Int(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	duration := time.Duration(minutes) * time.Minute
+	if err := b.svc.ExtendGame(ctx, cb.From.ID, clubID, gameID, duration); err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка при продлении игры: %v", err))
+		return
+	}
+
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, fmt.Sprintf("✅ Игра продлена на %d минут.", minutes), gameExtendKeyboard(clubID, gameID))
+}
+
+// handleGamePlayerStack asks the player for their current chip stack.
+func (b *Bot) handleGamePlayerStack(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	b.setState(cb.From.ID, stateGamePlayerStack, clubID)
+	b.mu.Lock()
+	b.states[cb.From.ID].gameID = gameID
+	b.mu.Unlock()
+
+	b.sendText(cb.Message.Chat.ID, "Введите количество ваших фишек:")
+}
+
+// handleGamePlayerStats shows the player's statistics for the game.
+func (b *Bot) handleGamePlayerStats(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participant, err := b.svc.GetPlayerGameStats(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	currentStacks, _ := b.svc.GetCurrentStacks(ctx, cb.From.ID, clubID, gameID)
+	var currentStack *float64
+	if stack, ok := currentStacks[participant.PlayerID]; ok {
+		currentStack = &stack
+	}
+	text := formatPlayerStatsText(game, participant, currentStack)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, playerStatsKeyboard(clubID, gameID))
+}
+
+// handleGameStats shows the game statistics for banker/owner/admin.
+func (b *Bot) handleGameStats(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetGameStatistics(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	currentStacks, _ := b.svc.GetCurrentStacks(ctx, cb.From.ID, clubID, gameID)
+	text := formatGameStatsText(game, participants, currentStacks)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameStatsKeyboard(clubID, gameID))
+}
+
+// handleGameActiveBack goes back to the game list.
+func (b *Bot) handleGameActiveBack(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, _, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	games, err := b.svc.GetClubGames(ctx, cb.From.ID, clubID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := "Игры клуба:"
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, gameListKeyboard(clubID, games))
+}
+
+// handleGamePlayerStackInput processes the player's stack input.
+func (b *Bot) handleGamePlayerStackInput(ctx context.Context, msg *tgbotapi.Message, state *userState) {
+	stack, err := strconv.ParseFloat(strings.TrimSpace(msg.Text), 64)
+	if err != nil || stack < 0 {
+		b.sendText(msg.Chat.ID, "Введите корректное число.")
+		return
+	}
+
+	if err := b.svc.UpdateCurrentStack(ctx, msg.From.ID, state.clubID, state.gameID, stack); err != nil {
+		b.sendText(msg.Chat.ID, fmt.Sprintf("Ошибка при сохранении стека: %v", err))
+		return
+	}
+
+	b.setState(msg.From.ID, stateIdle, 0)
+	b.sendText(msg.Chat.ID, fmt.Sprintf("✅ Текущий стек сохранен: %s", strconv.FormatFloat(stack, 'f', -1, 64)))
+}
+
+// --- Phase 04: Text formatting helpers ---
+
+// formatGameMonitorText formats the game monitor text for banker/owner/admin.
+func formatGameMonitorText(game *domain.Game, participants []*domain.GameParticipantWithPlayer, currentStacks map[int64]float64) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🎲 Игра #%d\n", game.ID))
+	sb.WriteString(fmt.Sprintf("Тип: %s\n", gameTypeLabel(game.GameType)))
+	sb.WriteString(fmt.Sprintf("Статус: %s\n", game.Status))
+	sb.WriteString(fmt.Sprintf("Начало: %s\n", game.StartTime.Format("02.01.2006 15:04")))
+
+	if game.Duration != nil {
+		timerStr := formatTimerDisplay(game)
+		sb.WriteString(fmt.Sprintf("⏱ Время: %s\n", timerStr))
+	}
+
+	buyInRegistered := 0
+	totalBuyIn := 0.0
+	totalRebuy := 0.0
+	totalBank := 0.0
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	for _, p := range participants {
+		if p.BuyInCount > 0 {
+			buyInRegistered++
+		}
+		playerBuyIn := float64(p.BuyInCount) * game.BuyInAmount
+		playerRebuy := float64(p.RebuyCount) * rebuyPrice
+		totalBuyIn += playerBuyIn
+		totalRebuy += playerRebuy
+		totalBank += playerBuyIn + playerRebuy
+	}
+
+	sb.WriteString(fmt.Sprintf("\nУчастников: %d\n", len(participants)))
+	sb.WriteString(fmt.Sprintf("Buy-in зарегистрирован: %d/%d\n", buyInRegistered, len(participants)))
+	sb.WriteString(fmt.Sprintf("\nБанк: %s\n", formatFloat(totalBank)))
+	sb.WriteString(fmt.Sprintf("Buy-in: %s\n", formatFloat(totalBuyIn)))
+	sb.WriteString(fmt.Sprintf("Rebuy: %s\n", formatFloat(totalRebuy)))
+
+	sb.WriteString("\nИгроки:\n")
+	for _, p := range participants {
+		name := memberShortName(p.Player)
+		playerBuyIn := float64(p.BuyInCount) * game.BuyInAmount
+		playerRebuy := float64(p.RebuyCount) * rebuyPrice
+		stackStr := "—"
+		if stack, ok := currentStacks[p.PlayerID]; ok {
+			stackStr = formatFloat(stack)
+		}
+		sb.WriteString(fmt.Sprintf("%s  %s  %s\n", name, formatFloat(playerBuyIn+playerRebuy), stackStr))
+	}
+
+	return sb.String()
+}
+
+// formatPlayerMonitorText formats the player's game monitor text.
+func formatPlayerMonitorText(game *domain.Game, participant *domain.GameParticipantWithPlayer, currentStack *float64) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🎲 Игра #%d\n", game.ID))
+	sb.WriteString(fmt.Sprintf("Тип: %s\n", gameTypeLabel(game.GameType)))
+	sb.WriteString(fmt.Sprintf("Статус: %s\n", game.Status))
+
+	if game.Duration != nil {
+		timerStr := formatTimerDisplay(game)
+		sb.WriteString(fmt.Sprintf("⏱ Время: %s\n", timerStr))
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	playerBuyIn := float64(participant.BuyInCount) * game.BuyInAmount
+	playerRebuy := float64(participant.RebuyCount) * rebuyPrice
+	totalInvested := playerBuyIn + playerRebuy
+
+	sb.WriteString(fmt.Sprintf("\nМои вложения:\n"))
+	sb.WriteString(fmt.Sprintf("Buy-in: %s\n", formatFloat(playerBuyIn)))
+	sb.WriteString(fmt.Sprintf("Rebuy: %s\n", formatFloat(playerRebuy)))
+	sb.WriteString(fmt.Sprintf("Всего: %s\n", formatFloat(totalInvested)))
+	sb.WriteString(fmt.Sprintf("\nRebuy: %d\n", participant.RebuyCount))
+
+	stackStr := "—"
+	if currentStack != nil {
+		stackStr = formatFloat(*currentStack)
+	}
+	sb.WriteString(fmt.Sprintf("Текущий стек: %s\n", stackStr))
+
+	return sb.String()
+}
+
+// formatGameBankText formats the current bank text.
+func formatGameBankText(game *domain.Game, participants []*domain.GameParticipantWithPlayer) string {
+	totalBuyIn := 0.0
+	totalRebuy := 0.0
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+	for _, p := range participants {
+		totalBuyIn += float64(p.BuyInCount) * game.BuyInAmount
+		totalRebuy += float64(p.RebuyCount) * rebuyPrice
+	}
+	totalBank := totalBuyIn + totalRebuy
+
+	var sb strings.Builder
+	sb.WriteString("💰 Банк игры\n\n")
+	sb.WriteString(fmt.Sprintf("Всего: %s\n", formatFloat(totalBank)))
+	sb.WriteString(fmt.Sprintf("Buy-in: %s\n", formatFloat(totalBuyIn)))
+	sb.WriteString(fmt.Sprintf("Rebuy: %s\n", formatFloat(totalRebuy)))
+	return sb.String()
+}
+
+// formatGameExpensesText formats the player expenses text.
+func formatGameExpensesText(game *domain.Game, participants []*domain.GameParticipantWithPlayer) string {
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	var sb strings.Builder
+	sb.WriteString("💸 Расходы игроков\n\n")
+	for _, p := range participants {
+		name := memberShortName(p.Player)
+		playerBuyIn := float64(p.BuyInCount) * game.BuyInAmount
+		playerRebuy := float64(p.RebuyCount) * rebuyPrice
+		total := playerBuyIn + playerRebuy
+		sb.WriteString(fmt.Sprintf("%s\n", name))
+		sb.WriteString(fmt.Sprintf("  Buy-in: %s\n", formatFloat(playerBuyIn)))
+		sb.WriteString(fmt.Sprintf("  Rebuy: %s\n", formatFloat(playerRebuy)))
+		sb.WriteString(fmt.Sprintf("  Rebuy count: %d\n", p.RebuyCount))
+		sb.WriteString(fmt.Sprintf("  Всего: %s\n\n", formatFloat(total)))
+	}
+	return sb.String()
+}
+
+// formatPlayerStatsText formats the player's statistics text.
+func formatPlayerStatsText(game *domain.Game, participant *domain.GameParticipant, currentStack *float64) string {
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+	playerBuyIn := float64(participant.BuyInCount) * game.BuyInAmount
+	playerRebuy := float64(participant.RebuyCount) * rebuyPrice
+	totalInvested := playerBuyIn + playerRebuy
+
+	var sb strings.Builder
+	sb.WriteString("📊 Моя статистика\n\n")
+	sb.WriteString(fmt.Sprintf("Buy-in count: %d\n", participant.BuyInCount))
+	sb.WriteString(fmt.Sprintf("Buy-in amount: %s\n", formatFloat(playerBuyIn)))
+	sb.WriteString(fmt.Sprintf("Rebuy count: %d\n", participant.RebuyCount))
+	sb.WriteString(fmt.Sprintf("Rebuy amount: %s\n", formatFloat(playerRebuy)))
+	sb.WriteString(fmt.Sprintf("Total invested: %s\n", formatFloat(totalInvested)))
+
+	stackStr := "—"
+	if currentStack != nil {
+		stackStr = formatFloat(*currentStack)
+	}
+	sb.WriteString(fmt.Sprintf("Current stack: %s\n", stackStr))
+	return sb.String()
+}
+
+// formatGameStatsText formats the game statistics text.
+func formatGameStatsText(game *domain.Game, participants []*domain.GameParticipantWithPlayer, currentStacks map[int64]float64) string {
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🎲 Игра #%d\n\n", game.ID))
+
+	buyInRegistered := 0
+	for _, p := range participants {
+		if p.BuyInCount > 0 {
+			buyInRegistered++
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("Участников: %d\n", len(participants)))
+	sb.WriteString(fmt.Sprintf("Buy-in зарегистрирован: %d/%d\n", buyInRegistered, len(participants)))
+
+	totalBuyIn := 0.0
+	totalRebuy := 0.0
+	for _, p := range participants {
+		totalBuyIn += float64(p.BuyInCount) * game.BuyInAmount
+		totalRebuy += float64(p.RebuyCount) * rebuyPrice
+	}
+	totalBank := totalBuyIn + totalRebuy
+
+	sb.WriteString(fmt.Sprintf("Банк: %s\n", formatFloat(totalBank)))
+	sb.WriteString(fmt.Sprintf("Buy-in: %s\n", formatFloat(totalBuyIn)))
+	sb.WriteString(fmt.Sprintf("Rebuy: %s\n", formatFloat(totalRebuy)))
+
+	sb.WriteString("\nИгроки:\n")
+	for _, p := range participants {
+		name := memberShortName(p.Player)
+		playerBuyIn := float64(p.BuyInCount) * game.BuyInAmount
+		playerRebuy := float64(p.RebuyCount) * rebuyPrice
+		stackStr := "—"
+		if stack, ok := currentStacks[p.PlayerID]; ok {
+			stackStr = formatFloat(stack)
+		}
+		sb.WriteString(fmt.Sprintf("%s  %s  %s\n", name, formatFloat(playerBuyIn+playerRebuy), stackStr))
+	}
+
+	if game.Duration != nil {
+		sb.WriteString(fmt.Sprintf("\nТаймер: %s\n", formatTimerDisplay(game)))
+	}
+
+	return sb.String()
+}
+
+// formatFloat formats a float64 for display, trimming trailing zeros.
+func formatFloat(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+// playerMonitorKeyboard returns the keyboard for the player's game monitor view.
+func playerMonitorKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Моя статистика", fmt.Sprintf("%s:%s:%s", cbGamePlayerStats, cid, gid)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Ввести текущий стек", fmt.Sprintf("%s:%s:%s", cbGamePlayerStack, cid, gid)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, cid, gid)),
+		),
+	)
+}
+
+// parseCallbackData2 parses a callback data string with 2 integer parts after the prefix.
+// Format: prefix:<int>:<int>
+func parseCallbackData2(data string) (int64, int64, error) {
+	parts := strings.Split(data, ":")
+	if len(parts) < 3 {
+		return 0, 0, fmt.Errorf("invalid callback data")
+	}
+	clubID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	gameID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	return clubID, gameID, nil
+}
+
+// parseCallbackData3 parses a callback data string with 3 integer parts after the prefix.
+// Format: prefix:<int>:<int>:<int>
+func parseCallbackData3(data string) (int64, int64, int64, error) {
+	parts := strings.Split(data, ":")
+	if len(parts) < 4 {
+		return 0, 0, 0, fmt.Errorf("invalid callback data")
+	}
+	clubID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	gameID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	playerID, err := strconv.ParseInt(parts[3], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return clubID, gameID, playerID, nil
+}
+
+// parseCallbackData3Int parses a callback data string with 2 integer parts and 1 int part after the prefix.
+// Format: prefix:<int>:<int>:<int>
+func parseCallbackData3Int(data string) (int64, int64, int, error) {
+	parts := strings.Split(data, ":")
+	if len(parts) < 4 {
+		return 0, 0, 0, fmt.Errorf("invalid callback data")
+	}
+	clubID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	gameID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	minutes, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return clubID, gameID, minutes, nil
+}
+
+// parseCallbackData4 parses a callback data string with 4 integer parts after the prefix.
+// Format: prefix:<int>:<int>:<int>:<int>
+func parseCallbackData4(data string) (int64, int64, int64, int64, error) {
+	parts := strings.Split(data, ":")
+	if len(parts) < 5 {
+		return 0, 0, 0, 0, fmt.Errorf("invalid callback data")
+	}
+	clubID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	gameID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	playerID, err := strconv.ParseInt(parts[3], 10, 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	eventID, err := strconv.ParseInt(parts[4], 10, 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return clubID, gameID, playerID, eventID, nil
 }
 
 // formatGameInfo returns a formatted string with game information.

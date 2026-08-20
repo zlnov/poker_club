@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -367,10 +368,12 @@ func (r *gameRepository) Create(ctx context.Context, game *domain.Game) (int64, 
 			club_id, banker_id, game_type, currency, money_model,
 			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
 			duration, start_time, end_time, status, min_players, max_players,
-			ranking_primary, ranking_secondary
+			ranking_primary, ranking_secondary,
+			timer_paused_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18
+			$11, $12, $13, $14, $15, $16, $17, $18,
+			$19
 		) RETURNING id
 	`
 	var id int64
@@ -379,6 +382,7 @@ func (r *gameRepository) Create(ctx context.Context, game *domain.Game) (int64, 
 		game.ChipValue, game.BuyInAmount, game.RebuyAllowed, game.RebuyPrice, game.MaxRebuys,
 		game.Duration, game.StartTime, game.EndTime, game.Status, game.MinPlayers, game.MaxPlayers,
 		game.RankingPrimary, game.RankingSecondary,
+		game.TimerPausedAt,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create game: %w", err)
@@ -391,7 +395,8 @@ func (r *gameRepository) GetByID(ctx context.Context, id int64) (*domain.Game, e
 		SELECT id, club_id, banker_id, game_type, currency, money_model,
 			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
 			duration, start_time, end_time, status, min_players, max_players,
-			ranking_primary, ranking_secondary, created_at, updated_at
+			ranking_primary, ranking_secondary, created_at, updated_at,
+			timer_paused_at, timer_paused_duration, timer_notified
 		FROM games WHERE id = $1
 	`
 	var g domain.Game
@@ -400,6 +405,7 @@ func (r *gameRepository) GetByID(ctx context.Context, id int64) (*domain.Game, e
 		&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
 		&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
 		&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+		&g.TimerPausedAt, &g.TimerPausedDuration, &g.TimerNotified,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -415,7 +421,8 @@ func (r *gameRepository) GetByClub(ctx context.Context, clubID int64) ([]*domain
 		SELECT id, club_id, banker_id, game_type, currency, money_model,
 			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
 			duration, start_time, end_time, status, min_players, max_players,
-			ranking_primary, ranking_secondary, created_at, updated_at
+			ranking_primary, ranking_secondary, created_at, updated_at,
+			timer_paused_at, timer_paused_duration, timer_notified
 		FROM games WHERE club_id = $1
 		ORDER BY start_time DESC
 	`
@@ -433,6 +440,7 @@ func (r *gameRepository) GetByClub(ctx context.Context, clubID int64) ([]*domain
 			&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
 			&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
 			&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+			&g.TimerPausedAt, &g.TimerPausedDuration, &g.TimerNotified,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan game: %w", err)
 		}
@@ -446,7 +454,8 @@ func (r *gameRepository) GetActiveByClub(ctx context.Context, clubID int64) (*do
 		SELECT id, club_id, banker_id, game_type, currency, money_model,
 			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
 			duration, start_time, end_time, status, min_players, max_players,
-			ranking_primary, ranking_secondary, created_at, updated_at
+			ranking_primary, ranking_secondary, created_at, updated_at,
+			timer_paused_at, timer_paused_duration, timer_notified
 		FROM games WHERE club_id = $1 AND status = 'active'
 		ORDER BY start_time DESC
 		LIMIT 1
@@ -457,6 +466,7 @@ func (r *gameRepository) GetActiveByClub(ctx context.Context, clubID int64) (*do
 		&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
 		&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
 		&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+		&g.TimerPausedAt, &g.TimerPausedDuration, &g.TimerNotified,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -473,14 +483,16 @@ func (r *gameRepository) Update(ctx context.Context, game *domain.Game) error {
 			banker_id = $1, game_type = $2, currency = $3, money_model = $4,
 			chip_value = $5, buy_in_amount = $6, rebuy_allowed = $7, rebuy_price = $8,
 			max_rebuys = $9, duration = $10, start_time = $11, min_players = $12,
-			max_players = $13, ranking_primary = $14, ranking_secondary = $15
-		WHERE id = $16
+			max_players = $13, ranking_primary = $14, ranking_secondary = $15,
+			timer_paused_at = $16, timer_paused_duration = $17, timer_notified = $18
+		WHERE id = $19
 	`
 	tag, err := r.db.Pool.Exec(ctx, query,
 		game.BankerID, game.GameType, game.Currency, game.MoneyModel,
 		game.ChipValue, game.BuyInAmount, game.RebuyAllowed, game.RebuyPrice,
 		game.MaxRebuys, game.Duration, game.StartTime, game.MinPlayers,
-		game.MaxPlayers, game.RankingPrimary, game.RankingSecondary, game.ID,
+		game.MaxPlayers, game.RankingPrimary, game.RankingSecondary,
+		game.TimerPausedAt, game.TimerPausedDuration, game.TimerNotified, game.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update game: %w", err)
@@ -501,6 +513,84 @@ func (r *gameRepository) Cancel(ctx context.Context, id int64) error {
 		return fmt.Errorf("game not found: id=%d", id)
 	}
 	return nil
+}
+
+// StartGame transitions a game to active status and records the actual start time.
+func (r *gameRepository) StartGame(ctx context.Context, gameID int64, startTime time.Time) error {
+	query := `UPDATE games SET status = 'active', start_time = $1 WHERE id = $2`
+	tag, err := r.db.Pool.Exec(ctx, query, startTime, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to start game: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game not found: id=%d", gameID)
+	}
+	return nil
+}
+
+// UpdateTimer updates the timer state for a game.
+func (r *gameRepository) UpdateTimer(ctx context.Context, gameID int64, pausedAt *time.Time, pausedDuration *time.Duration, notified bool) error {
+	query := `UPDATE games SET timer_paused_at = $1, timer_paused_duration = $2, timer_notified = $3 WHERE id = $4`
+	tag, err := r.db.Pool.Exec(ctx, query, pausedAt, pausedDuration, notified, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to update timer: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game not found: id=%d", gameID)
+	}
+	return nil
+}
+
+// ExtendDuration adds additional duration to a game's duration and resets the timer notification flag.
+func (r *gameRepository) ExtendDuration(ctx context.Context, gameID int64, additionalDuration time.Duration) error {
+	query := `UPDATE games SET duration = duration + $1, timer_notified = FALSE WHERE id = $2`
+	tag, err := r.db.Pool.Exec(ctx, query, additionalDuration, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to extend game duration: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game not found: id=%d", gameID)
+	}
+	return nil
+}
+
+// GetExpiredTimerGames returns active games with a duration where the timer has expired
+// (not paused and effective end time has passed) and notification has not been sent yet.
+func (r *gameRepository) GetExpiredTimerGames(ctx context.Context) ([]*domain.Game, error) {
+	query := `
+		SELECT id, club_id, banker_id, game_type, currency, money_model,
+			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
+			duration, start_time, end_time, status, min_players, max_players,
+			ranking_primary, ranking_secondary, created_at, updated_at,
+			timer_paused_at, timer_paused_duration, timer_notified
+		FROM games
+		WHERE status = 'active'
+			AND duration IS NOT NULL
+			AND timer_paused_at IS NULL
+			AND timer_notified = FALSE
+			AND (start_time + duration - COALESCE(timer_paused_duration, '00:00:00')) < NOW()
+	`
+	rows, err := r.db.Pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expired timer games: %w", err)
+	}
+	defer rows.Close()
+
+	var games []*domain.Game
+	for rows.Next() {
+		var g domain.Game
+		if err := rows.Scan(
+			&g.ID, &g.ClubID, &g.BankerID, &g.GameType, &g.Currency, &g.MoneyModel,
+			&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
+			&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
+			&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+			&g.TimerPausedAt, &g.TimerPausedDuration, &g.TimerNotified,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan game: %w", err)
+		}
+		games = append(games, &g)
+	}
+	return games, nil
 }
 
 // gameParticipantRepository implements domain.GameParticipantRepository.
@@ -532,7 +622,8 @@ func (r *gameParticipantRepository) Create(ctx context.Context, participant *dom
 
 func (r *gameParticipantRepository) GetByID(ctx context.Context, id int64) (*domain.GameParticipant, error) {
 	query := `
-		SELECT id, game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status, created_at, updated_at
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count,
+			chips_end, payout_amount, place, status, created_at, updated_at
 		FROM game_participants WHERE id = $1
 	`
 	var p domain.GameParticipant
@@ -551,7 +642,8 @@ func (r *gameParticipantRepository) GetByID(ctx context.Context, id int64) (*dom
 
 func (r *gameParticipantRepository) GetByGame(ctx context.Context, gameID int64) ([]*domain.GameParticipant, error) {
 	query := `
-		SELECT id, game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status, created_at, updated_at
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count,
+			chips_end, payout_amount, place, status, created_at, updated_at
 		FROM game_participants WHERE game_id = $1
 		ORDER BY id ASC
 	`
@@ -611,7 +703,8 @@ func (r *gameParticipantRepository) GetByGameWithPlayers(ctx context.Context, ga
 
 func (r *gameParticipantRepository) GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) (*domain.GameParticipant, error) {
 	query := `
-		SELECT id, game_id, player_id, buy_in_count, rebuy_count, chips_end, payout_amount, place, status, created_at, updated_at
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count,
+			chips_end, payout_amount, place, status, created_at, updated_at
 		FROM game_participants WHERE game_id = $1 AND player_id = $2
 	`
 	var p domain.GameParticipant
@@ -631,13 +724,15 @@ func (r *gameParticipantRepository) GetByGameAndPlayer(ctx context.Context, game
 func (r *gameParticipantRepository) Update(ctx context.Context, participant *domain.GameParticipant) error {
 	query := `
 		UPDATE game_participants SET
-			buy_in_count = $1, rebuy_count = $2, chips_end = $3, payout_amount = $4,
+			buy_in_count = $1, rebuy_count = $2,
+			chips_end = $3, payout_amount = $4,
 			place = $5, status = $6
 		WHERE id = $7
 	`
 	tag, err := r.db.Pool.Exec(ctx, query,
-		participant.BuyInCount, participant.RebuyCount, participant.ChipsEnd,
-		participant.PayoutAmount, participant.Place, participant.Status, participant.ID,
+		participant.BuyInCount, participant.RebuyCount,
+		participant.ChipsEnd, participant.PayoutAmount,
+		participant.Place, participant.Status, participant.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update game participant: %w", err)
@@ -672,6 +767,32 @@ func (r *gameParticipantRepository) Delete(ctx context.Context, gameID, playerID
 	return nil
 }
 
+// RegisterBuyIn sets the buy-in count for a game participant.
+func (r *gameParticipantRepository) RegisterBuyIn(ctx context.Context, gameID, playerID int64, buyInCount int) error {
+	query := `UPDATE game_participants SET buy_in_count = $1 WHERE game_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, buyInCount, gameID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to register buy-in: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game participant not found: game_id=%d, player_id=%d", gameID, playerID)
+	}
+	return nil
+}
+
+// RegisterRebuy sets the rebuy count for a game participant.
+func (r *gameParticipantRepository) RegisterRebuy(ctx context.Context, gameID, playerID int64, rebuyCount int) error {
+	query := `UPDATE game_participants SET rebuy_count = $1 WHERE game_id = $2 AND player_id = $3`
+	tag, err := r.db.Pool.Exec(ctx, query, rebuyCount, gameID, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to register rebuy: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("game participant not found: game_id=%d, player_id=%d", gameID, playerID)
+	}
+	return nil
+}
+
 // eventRepository implements domain.EventRepository.
 type eventRepository struct {
 	db *DB
@@ -696,6 +817,60 @@ func (r *eventRepository) Create(ctx context.Context, event *domain.Event) (int6
 		return 0, fmt.Errorf("failed to create event: %w", err)
 	}
 	return id, nil
+}
+
+// GetByGameAndPlayer returns all events for a specific player in a game.
+func (r *eventRepository) GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) ([]*domain.Event, error) {
+	query := `
+		SELECT id, game_id, player_id, type, old_value, new_value, metadata, created_at, created_by
+		FROM events WHERE game_id = $1 AND player_id = $2
+		ORDER BY created_at ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, gameID, playerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []*domain.Event
+	for rows.Next() {
+		var e domain.Event
+		if err := rows.Scan(
+			&e.ID, &e.GameID, &e.PlayerID, &e.Type, &e.OldValue, &e.NewValue,
+			&e.Metadata, &e.CreatedAt, &e.CreatedBy,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+		events = append(events, &e)
+	}
+	return events, nil
+}
+
+// GetLastChipsSetByGame returns a map of playerID to current stack
+// based on the last chips_set event for each player in the game.
+func (r *eventRepository) GetLastChipsSetByGame(ctx context.Context, gameID int64) (map[int64]float64, error) {
+	query := `
+		SELECT DISTINCT ON (player_id) player_id, new_value
+		FROM events
+		WHERE game_id = $1 AND type = 'chips_set'
+		ORDER BY player_id, created_at DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last chips_set events: %w", err)
+	}
+	defer rows.Close()
+
+	stacks := make(map[int64]float64)
+	for rows.Next() {
+		var playerID int64
+		var stack float64
+		if err := rows.Scan(&playerID, &stack); err != nil {
+			return nil, fmt.Errorf("failed to scan chips_set event: %w", err)
+		}
+		stacks[playerID] = stack
+	}
+	return stacks, nil
 }
 
 // playerStatisticsRepository implements domain.PlayerStatisticsRepository.

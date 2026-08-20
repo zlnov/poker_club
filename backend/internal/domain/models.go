@@ -67,6 +67,10 @@ type Game struct {
 	RankingSecondary *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	// Timer state (for Cash games with duration)
+	TimerPausedAt       *time.Time
+	TimerPausedDuration *time.Duration
+	TimerNotified       bool
 }
 
 // GameParticipant represents a player registered in a game.

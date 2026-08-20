@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ClubRepository defines operations for club persistence.
 type ClubRepository interface {
@@ -45,6 +48,10 @@ type GameRepository interface {
 	GetActiveByClub(ctx context.Context, clubID int64) (*Game, error)
 	Update(ctx context.Context, game *Game) error
 	Cancel(ctx context.Context, id int64) error
+	StartGame(ctx context.Context, gameID int64, startTime time.Time) error
+	UpdateTimer(ctx context.Context, gameID int64, pausedAt *time.Time, pausedDuration *time.Duration, notified bool) error
+	ExtendDuration(ctx context.Context, gameID int64, additionalDuration time.Duration) error
+	GetExpiredTimerGames(ctx context.Context) ([]*Game, error)
 }
 
 // GameParticipantRepository defines operations for game participant persistence.
@@ -58,12 +65,16 @@ type GameParticipantRepository interface {
 	Update(ctx context.Context, participant *GameParticipant) error
 	UpdateStatus(ctx context.Context, gameID, playerID int64, status string) error
 	Delete(ctx context.Context, gameID, playerID int64) error
+	RegisterBuyIn(ctx context.Context, gameID, playerID int64, buyInCount int) error
+	RegisterRebuy(ctx context.Context, gameID, playerID int64, rebuyCount int) error
 }
 
 // EventRepository defines operations for event log persistence.
 type EventRepository interface {
 	Ping(ctx context.Context) error
 	Create(ctx context.Context, event *Event) (int64, error)
+	GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) ([]*Event, error)
+	GetLastChipsSetByGame(ctx context.Context, gameID int64) (map[int64]float64, error)
 }
 
 // PlayerStatisticsRepository defines operations for player statistics persistence.

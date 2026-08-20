@@ -93,6 +93,7 @@ func run() error {
 				log.Error("failed to set webhook", "error", err)
 				return fmt.Errorf("failed to set webhook: %w", err)
 			}
+			go bot.StartTimerProcess(ctx)
 		}
 	}
 

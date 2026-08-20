@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -17,6 +18,7 @@ type userState struct {
 	action   string // stateIdle, stateCreateClub, stateChangeName, stateCloseConfirm, stateCreateGame, etc.
 	clubID   int64  // relevant club ID when applicable
 	gameID   int64  // relevant game ID when applicable
+	playerID int64  // relevant player ID when applicable (e.g. rebuy fix)
 	gameData *gameCreationData
 }
 
@@ -166,6 +168,9 @@ func (b *Bot) StartLongPolling(ctx context.Context) error {
 	updates := b.api.GetUpdatesChan(u)
 	b.log.Info("long polling started")
 
+	// Start timer background process.
+	go b.StartTimerProcess(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -174,6 +179,40 @@ func (b *Bot) StartLongPolling(ctx context.Context) error {
 		case update := <-updates:
 			b.ProcessUpdate(update)
 		}
+	}
+}
+
+// StartTimerProcess runs a background goroutine that periodically checks for
+// games with expired timers and sends notifications to the banker and owner/admin.
+func (b *Bot) StartTimerProcess(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			b.log.Info("timer process stopped")
+			return
+		case <-ticker.C:
+			b.checkExpiredTimers(ctx)
+		}
+	}
+}
+
+// checkExpiredTimers checks for games with expired timers and sends notifications.
+func (b *Bot) checkExpiredTimers(ctx context.Context) {
+	notifications, err := b.svc.CheckExpiredTimers(ctx)
+	if err != nil {
+		b.log.Error("failed to check expired timers", "error", err)
+		return
+	}
+
+	for _, n := range notifications {
+		text := fmt.Sprintf("⏰ Игра #%d завершается!\nВремя игры вышло.", n.Game.ID)
+		for _, tgUserID := range n.TgUserIDs {
+			b.sendText(tgUserID, text)
+		}
+		b.log.Info("timer notification sent", "game_id", n.Game.ID, "tg_user_ids", n.TgUserIDs)
 	}
 }
 

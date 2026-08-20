@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"poker-club/backend/internal/domain"
 )
@@ -1121,4 +1122,697 @@ func (s *Service) GetGameParticipant(ctx context.Context, tgUserID int64, clubID
 		GameParticipant: *participant,
 		Player:          *p,
 	}, nil
+}
+
+// --- Phase 04: Game start process ---
+
+// checkGameAccess verifies that the Telegram user is the banker, owner, or admin
+// of the club that owns the game. It returns the game and the club member.
+func (s *Service) checkGameAccess(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, *domain.ClubMember, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("access denied: user not found: %w", err)
+	}
+
+	member, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("access denied: user is not a member of this club: %w", err)
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	// Owner or admin has access.
+	if member.Role == "owner" || member.Role == "admin" {
+		return game, member, nil
+	}
+
+	// Banker has access (banker_id references club_members.id).
+	if member.ID == game.BankerID {
+		return game, member, nil
+	}
+
+	s.log.Warn("access denied",
+		"tg_user_id", tgUserID,
+		"club_id", clubID,
+		"game_id", gameID,
+		"role", member.Role,
+	)
+	return nil, nil, errors.New("access denied: insufficient permissions")
+}
+
+// StartGame transitions a game from planned to active.
+// The requesting user must be the banker, owner, or admin.
+// On start: status → active, start_time → now, Buy-in registered for all
+// confirmed/accepted participants, timer started if duration is set.
+func (s *Service) StartGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, error) {
+	game, member, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.Status != "planned" {
+		return nil, errors.New("игра должна быть в статусе planned")
+	}
+
+	// Check constraint 7.15: no active games in the club.
+	_, err = s.repos.Games.GetActiveByClub(ctx, clubID)
+	if err == nil {
+		return nil, errors.New("в клубе уже есть активная игра")
+	}
+
+	// Transition to active and record actual start time.
+	startTime := time.Now()
+	if err := s.repos.Games.StartGame(ctx, gameID, startTime); err != nil {
+		return nil, fmt.Errorf("failed to start game: %w", err)
+	}
+
+	// Register Buy-in for all confirmed/accepted participants.
+	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	for _, p := range participants {
+		if p.Status == "confirmed" || p.Status == "accepted" {
+			if err := s.repos.GameParticipants.RegisterBuyIn(ctx, gameID, p.PlayerID, 1); err != nil {
+				return nil, fmt.Errorf("failed to register buy-in for player %d: %w", p.PlayerID, err)
+			}
+			// Record buy-in event.
+			buyInAmount := game.BuyInAmount
+			event := &domain.Event{
+				GameID:    gameID,
+				PlayerID:  p.PlayerID,
+				Type:      "buy_in",
+				NewValue:  &buyInAmount,
+				CreatedBy: member.ID,
+			}
+			if _, err := s.repos.Events.Create(ctx, event); err != nil {
+				s.log.Warn("failed to create buy-in event", "error", err)
+			}
+		}
+	}
+
+	s.log.Info("game started",
+		"game_id", gameID,
+		"club_id", clubID,
+		"tg_user_id", tgUserID,
+		"start_time", startTime,
+	)
+
+	return s.repos.Games.GetByID(ctx, gameID)
+}
+
+// RegisterRebuy registers a rebuy for a player in an active game.
+// Only the banker, owner, or admin can perform this action.
+// Rebuy is only allowed if rebuy_allowed is true and max_rebuys is not exceeded.
+func (s *Service) RegisterRebuy(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) error {
+	game, member, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("регистрация rebuy доступна только для активных игр")
+	}
+
+	if !game.RebuyAllowed {
+		return errors.New("rebuy не разрешен для этой игры")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
+	if err != nil {
+		return errors.New("игрок не является участником игры")
+	}
+
+	// Check max_rebuys constraint.
+	if game.MaxRebuys != nil && participant.RebuyCount >= *game.MaxRebuys {
+		return errors.New("максимальное количество rebuy достигнуто")
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	newRebuyCount := participant.RebuyCount + 1
+	if err := s.repos.GameParticipants.RegisterRebuy(ctx, gameID, playerID, newRebuyCount); err != nil {
+		return fmt.Errorf("failed to register rebuy: %w", err)
+	}
+
+	// Record rebuy event.
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  playerID,
+		Type:      "rebuy",
+		NewValue:  &rebuyPrice,
+		CreatedBy: member.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		s.log.Warn("failed to create rebuy event", "error", err)
+	}
+
+	s.log.Info("rebuy registered",
+		"game_id", gameID,
+		"player_id", playerID,
+		"rebuy_count", newRebuyCount,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// FixRebuy corrects an erroneous rebuy for a player.
+// The banker, owner, or admin can adjust the rebuy_count.
+// The rebuy amount is recalculated from the count and game.rebuy_price.
+// A correction event is recorded to preserve history.
+func (s *Service) FixRebuy(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64, newRebuyCount int) error {
+	game, member, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("исправление rebuy доступно только для активных игр")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
+	if err != nil {
+		return errors.New("игрок не является участником игры")
+	}
+
+	oldRebuyCount := participant.RebuyCount
+
+	participant.RebuyCount = newRebuyCount
+
+	if err := s.repos.GameParticipants.Update(ctx, participant); err != nil {
+		return fmt.Errorf("failed to fix rebuy: %w", err)
+	}
+
+	// Calculate old and new rebuy amounts from counts.
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+	oldRebuyAmount := float64(oldRebuyCount) * rebuyPrice
+	newRebuyAmount := float64(newRebuyCount) * rebuyPrice
+
+	// Record correction event.
+	metadata := map[string]interface{}{
+		"old_rebuy_count": oldRebuyCount,
+		"new_rebuy_count": newRebuyCount,
+		"old_rebuy_amount": oldRebuyAmount,
+		"new_rebuy_amount": newRebuyAmount,
+	}
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  playerID,
+		Type:      "correction",
+		OldValue:  &oldRebuyAmount,
+		NewValue:  &newRebuyAmount,
+		Metadata:  metadata,
+		CreatedBy: member.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		s.log.Warn("failed to create correction event", "error", err)
+	}
+
+	s.log.Info("rebuy fixed",
+		"game_id", gameID,
+		"player_id", playerID,
+		"old_rebuy_count", oldRebuyCount,
+		"new_rebuy_count", newRebuyCount,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// UpdateCurrentStack allows a player to update their own current chip stack
+// during an active game. The value must not be negative.
+// The current stack is stored as a chips_set event in the events table.
+func (s *Service) UpdateCurrentStack(ctx context.Context, tgUserID int64, clubID int64, gameID int64, stack float64) error {
+	if stack < 0 {
+		return errors.New("количество фишек не может быть отрицательным")
+	}
+
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.ClubID != clubID {
+		return errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "active" {
+		return errors.New("ввод стека доступен только для активных игр")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if err != nil {
+		return errors.New("вы не являетесь участником этой игры")
+	}
+
+	// Record chips_set event.
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  player.ID,
+		Type:      "chips_set",
+		NewValue:  &stack,
+		CreatedBy: participant.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		return fmt.Errorf("failed to record chips_set event: %w", err)
+	}
+
+	s.log.Info("current stack updated",
+		"game_id", gameID,
+		"player_id", player.ID,
+		"stack", stack,
+	)
+
+	return nil
+}
+
+// AddPlayerToGame adds a new player to an active Cash game.
+// The requesting user must be the banker, owner, or admin.
+// The player must be an active club member, not already in the game,
+// and max_players must not be exceeded.
+// A Buy-in is automatically registered for the new player.
+func (s *Service) AddPlayerToGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) error {
+	game, member, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("добавление игрока доступно только для активных игр")
+	}
+
+	if game.GameType != "cash" {
+		return errors.New("добавление игрока доступно только для Cash-игр")
+	}
+
+	// Check player is an active club member.
+	playerMember, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, playerID)
+	if err != nil {
+		return errors.New("игрок не является участником клуба")
+	}
+	if playerMember.Status != "active" {
+		return errors.New("игрок не является активным участником клуба")
+	}
+
+	// Check player is not already in the game.
+	existing, _ := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
+	if existing != nil {
+		return errors.New("игрок уже является участником этой игры")
+	}
+
+	// Check max_players constraint.
+	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to get game participants: %w", err)
+	}
+	if len(participants) >= game.MaxPlayers {
+		return errors.New("достигнуто максимальное количество игроков")
+	}
+
+	// Create participant with initial Buy-in.
+	participant := &domain.GameParticipant{
+		GameID:     gameID,
+		PlayerID:   playerID,
+		BuyInCount: 1,
+		Status:     "confirmed",
+	}
+	if _, err := s.repos.GameParticipants.Create(ctx, participant); err != nil {
+		return fmt.Errorf("failed to create game participant: %w", err)
+	}
+
+	// Record buy-in event.
+	buyInAmount := game.BuyInAmount
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  playerID,
+		Type:      "buy_in",
+		NewValue:  &buyInAmount,
+		CreatedBy: member.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		s.log.Warn("failed to create buy-in event for added player", "error", err)
+	}
+
+	s.log.Info("player added to game",
+		"game_id", gameID,
+		"player_id", playerID,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// PauseTimer pauses the game timer. Only available for Cash games with a duration.
+// The requesting user must be the banker, owner, or admin.
+func (s *Service) PauseTimer(ctx context.Context, tgUserID int64, clubID int64, gameID int64) error {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("управление таймером доступно только для активных игр")
+	}
+
+	if game.Duration == nil {
+		return errors.New("у этой игры нет таймера")
+	}
+
+	if game.TimerPausedAt != nil {
+		return errors.New("таймер уже приостановлен")
+	}
+
+	now := time.Now()
+	if err := s.repos.Games.UpdateTimer(ctx, gameID, &now, game.TimerPausedDuration, false); err != nil {
+		return fmt.Errorf("failed to pause timer: %w", err)
+	}
+
+	s.log.Info("timer paused",
+		"game_id", gameID,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// ResumeTimer resumes a paused game timer.
+// The requesting user must be the banker, owner, or admin.
+func (s *Service) ResumeTimer(ctx context.Context, tgUserID int64, clubID int64, gameID int64) error {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("управление таймером доступно только для активных игр")
+	}
+
+	if game.Duration == nil {
+		return errors.New("у этой игры нет таймера")
+	}
+
+	if game.TimerPausedAt == nil {
+		return errors.New("таймер не приостановлен")
+	}
+
+	// Calculate additional paused duration.
+	pausedDuration := time.Duration(0)
+	if game.TimerPausedDuration != nil {
+		pausedDuration = *game.TimerPausedDuration
+	}
+	pausedDuration += time.Since(*game.TimerPausedAt)
+
+	if err := s.repos.Games.UpdateTimer(ctx, gameID, nil, &pausedDuration, false); err != nil {
+		return fmt.Errorf("failed to resume timer: %w", err)
+	}
+
+	s.log.Info("timer resumed",
+		"game_id", gameID,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// ExtendGame extends the game duration by the specified amount.
+// The requesting user must be the banker, owner, or admin.
+func (s *Service) ExtendGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, additionalDuration time.Duration) error {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("продление доступно только для активных игр")
+	}
+
+	if game.Duration == nil {
+		return errors.New("у этой игры нет таймера")
+	}
+
+	if err := s.repos.Games.ExtendDuration(ctx, gameID, additionalDuration); err != nil {
+		return fmt.Errorf("failed to extend game duration: %w", err)
+	}
+
+	s.log.Info("game extended",
+		"game_id", gameID,
+		"additional_duration", additionalDuration,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// GetGameMonitor returns the game and all participants for the banker/owner/admin
+// game monitor view.
+func (s *Service) GetGameMonitor(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, []*domain.GameParticipantWithPlayer, error) {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.Status != "active" {
+		return nil, nil, errors.New("монитор доступен только для активных игр")
+	}
+
+	participants, err := s.repos.GameParticipants.GetByGameWithPlayers(ctx, gameID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	return game, participants, nil
+}
+
+// GetPlayerGameMonitor returns the game and the requesting player's participant data
+// for the player's game monitor view.
+func (s *Service) GetPlayerGameMonitor(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, *domain.GameParticipantWithPlayer, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "active" {
+		return nil, nil, errors.New("монитор доступен только для активных игр")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if err != nil {
+		return nil, nil, errors.New("вы не являетесь участником этой игры")
+	}
+
+	p, err := s.repos.Players.GetByID(ctx, participant.PlayerID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return game, &domain.GameParticipantWithPlayer{
+		GameParticipant: *participant,
+		Player:          *p,
+	}, nil
+}
+
+// GetPlayerGameStats returns the game and the requesting player's participant data
+// for the "Моя статистика" view.
+func (s *Service) GetPlayerGameStats(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, *domain.GameParticipant, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "active" {
+		return nil, nil, errors.New("статистика доступна только для активных игр")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, player.ID)
+	if err != nil {
+		return nil, nil, errors.New("вы не являетесь участником этой игры")
+	}
+
+	return game, participant, nil
+}
+
+// GetGameStatistics returns the game and all participants for the game statistics view.
+// The requesting user must be the banker, owner, or admin.
+func (s *Service) GetGameStatistics(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, []*domain.GameParticipantWithPlayer, error) {
+	game, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.Status != "active" {
+		return nil, nil, errors.New("статистика доступна только для активных игр")
+	}
+
+	participants, err := s.repos.GameParticipants.GetByGameWithPlayers(ctx, gameID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	return game, participants, nil
+}
+
+// GetRebuyEvents returns all rebuy events for a player in a game.
+// The requesting user must be the banker, owner, or admin.
+func (s *Service) GetRebuyEvents(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) ([]*domain.Event, error) {
+	_, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.Status != "active" {
+		return nil, errors.New("управление rebuy доступно только для активных игр")
+	}
+
+	events, err := s.repos.Events.GetByGameAndPlayer(ctx, gameID, playerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events: %w", err)
+	}
+
+	// Filter to only rebuy events.
+	var rebuyEvents []*domain.Event
+	for _, e := range events {
+		if e.Type == "rebuy" {
+			rebuyEvents = append(rebuyEvents, e)
+		}
+	}
+
+	return rebuyEvents, nil
+}
+
+// GetActiveGameByPlayer returns the active game for a club if the player
+// is a participant in it. Used to check constraint 7.6.
+func (s *Service) GetActiveGameByPlayer(ctx context.Context, clubID int64, playerID int64) (*domain.Game, error) {
+	game, err := s.repos.Games.GetActiveByClub(ctx, clubID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, game.ID, playerID); err != nil {
+		return nil, errors.New("игрок не участвует в активной игре")
+	}
+
+	return game, nil
+}
+
+// GetCurrentStacks returns a map of playerID to current stack for all participants
+// in a game, based on the last chips_set event for each player.
+func (s *Service) GetCurrentStacks(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (map[int64]float64, error) {
+	if _, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID); err != nil {
+		// Fall back to permission check for non-banker users.
+		if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+			return nil, err
+		}
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	return s.repos.Events.GetLastChipsSetByGame(ctx, gameID)
+}
+
+// TimerNotification contains a game with expired timer and the Telegram user IDs
+// of the banker and owner/admin who should be notified.
+type TimerNotification struct {
+	Game       *domain.Game
+	TgUserIDs  []int64
+}
+
+// CheckExpiredTimers returns games with expired timers and the Telegram user IDs
+// of the banker and owner/admin who should be notified. It also marks the
+// notification as sent (timer_notified = true).
+func (s *Service) CheckExpiredTimers(ctx context.Context) ([]*TimerNotification, error) {
+	games, err := s.repos.Games.GetExpiredTimerGames(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expired timer games: %w", err)
+	}
+
+	var notifications []*TimerNotification
+	for _, game := range games {
+		// Get all club members with player info.
+		members, err := s.repos.ClubMembers.GetByClubWithPlayers(ctx, game.ClubID)
+		if err != nil {
+			s.log.Warn("failed to get club members", "error", err, "game_id", game.ID, "club_id", game.ClubID)
+			continue
+		}
+
+		var tgUserIDs []int64
+		seen := map[int64]bool{}
+
+		for _, m := range members {
+			// Banker gets notified.
+			if m.ID == game.BankerID && m.Player.TgUserID != nil {
+				if !seen[*m.Player.TgUserID] {
+					tgUserIDs = append(tgUserIDs, *m.Player.TgUserID)
+					seen[*m.Player.TgUserID] = true
+				}
+			}
+			// Owner/Admin get notified.
+			if (m.Role == "owner" || m.Role == "admin") && m.Player.TgUserID != nil {
+				if !seen[*m.Player.TgUserID] {
+					tgUserIDs = append(tgUserIDs, *m.Player.TgUserID)
+					seen[*m.Player.TgUserID] = true
+				}
+			}
+		}
+
+		// Mark notification as sent.
+		if err := s.repos.Games.UpdateTimer(ctx, game.ID, game.TimerPausedAt, game.TimerPausedDuration, true); err != nil {
+			s.log.Warn("failed to mark timer notified", "error", err, "game_id", game.ID)
+		}
+
+		notifications = append(notifications, &TimerNotification{
+			Game:      game,
+			TgUserIDs: tgUserIDs,
+		})
+	}
+
+	return notifications, nil
 }
