@@ -353,6 +353,17 @@ func (r *clubMemberRepository) UpdateAccepted(ctx context.Context, clubID, playe
 	return nil
 }
 
+// CountActiveMembers returns the number of active members in a club.
+func (r *clubMemberRepository) CountActiveMembers(ctx context.Context, clubID int64) (int, error) {
+	query := `SELECT COUNT(*) FROM club_members WHERE club_id = $1 AND status = 'active'`
+	var count int
+	err := r.db.Pool.QueryRow(ctx, query, clubID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count active members: %w", err)
+	}
+	return count, nil
+}
+
 // gameRepository implements domain.GameRepository.
 type gameRepository struct {
 	db *DB
@@ -429,6 +440,40 @@ func (r *gameRepository) GetByClub(ctx context.Context, clubID int64) ([]*domain
 	rows, err := r.db.Pool.Query(ctx, query, clubID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get games by club: %w", err)
+	}
+	defer rows.Close()
+
+	var games []*domain.Game
+	for rows.Next() {
+		var g domain.Game
+		if err := rows.Scan(
+			&g.ID, &g.ClubID, &g.BankerID, &g.GameType, &g.Currency, &g.MoneyModel,
+			&g.ChipValue, &g.BuyInAmount, &g.RebuyAllowed, &g.RebuyPrice, &g.MaxRebuys,
+			&g.Duration, &g.StartTime, &g.EndTime, &g.Status, &g.MinPlayers, &g.MaxPlayers,
+			&g.RankingPrimary, &g.RankingSecondary, &g.CreatedAt, &g.UpdatedAt,
+			&g.TimerPausedAt, &g.TimerPausedDuration, &g.TimerNotified,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan game: %w", err)
+		}
+		games = append(games, &g)
+	}
+	return games, nil
+}
+
+// GetFinishedByClub returns all finished games for a club, ordered by start_time DESC.
+func (r *gameRepository) GetFinishedByClub(ctx context.Context, clubID int64) ([]*domain.Game, error) {
+	query := `
+		SELECT id, club_id, banker_id, game_type, currency, money_model,
+			chip_value, buy_in_amount, rebuy_allowed, rebuy_price, max_rebuys,
+			duration, start_time, end_time, status, min_players, max_players,
+			ranking_primary, ranking_secondary, created_at, updated_at,
+			timer_paused_at, timer_paused_duration, timer_notified
+		FROM games WHERE club_id = $1 AND status = 'finished'
+		ORDER BY start_time DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get finished games by club: %w", err)
 	}
 	defer rows.Close()
 
@@ -817,6 +862,23 @@ func (r *gameParticipantRepository) UpdateChipsEnd(ctx context.Context, gameID, 
 	return nil
 }
 
+// GetPlayerFinishedStats returns derived metrics for a player across all finished games in a club.
+// These are calculated at read time from game_participants, not cached.
+func (r *gameParticipantRepository) GetPlayerFinishedStats(ctx context.Context, playerID, clubID int64) (totalBuyInCount int, avgPlace float64, err error) {
+	query := `
+		SELECT COALESCE(SUM(gp.buy_in_count), 0),
+		       COALESCE(AVG(gp.place), 0)
+		FROM game_participants gp
+		JOIN games g ON g.id = gp.game_id
+		WHERE gp.player_id = $1 AND g.club_id = $2 AND g.status = 'finished'
+	`
+	err = r.db.Pool.QueryRow(ctx, query, playerID, clubID).Scan(&totalBuyInCount, &avgPlace)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get player finished stats: %w", err)
+	}
+	return totalBuyInCount, avgPlace, nil
+}
+
 // eventRepository implements domain.EventRepository.
 type eventRepository struct {
 	db *DB
@@ -963,6 +1025,37 @@ func (r *playerStatisticsRepository) Upsert(ctx context.Context, stats *domain.P
 		return fmt.Errorf("failed to upsert player statistics: %w", err)
 	}
 	return nil
+}
+
+// GetByClub returns all player statistics for a club.
+func (r *playerStatisticsRepository) GetByClub(ctx context.Context, clubID int64) ([]*domain.PlayerStatistics, error) {
+	query := `
+		SELECT id, player_id, club_id, total_games, total_buy_in_amount,
+			total_rebuy_amount, total_rebuys_count, total_invested, total_chips,
+			total_profit, biggest_win, biggest_loss, games_won, podiums, roi, itm, updated_at
+		FROM player_statistics WHERE club_id = $1
+		ORDER BY total_profit DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get player statistics by club: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []*domain.PlayerStatistics
+	for rows.Next() {
+		var s domain.PlayerStatistics
+		if err := rows.Scan(
+			&s.ID, &s.PlayerID, &s.ClubID, &s.TotalGames, &s.TotalBuyInAmount,
+			&s.TotalRebuyAmount, &s.TotalRebuysCount, &s.TotalInvested, &s.TotalChips,
+			&s.TotalProfit, &s.BiggestWin, &s.BiggestLoss, &s.GamesWon, &s.Podiums,
+			&s.ROI, &s.ITM, &s.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan player statistics: %w", err)
+		}
+		stats = append(stats, &s)
+	}
+	return stats, nil
 }
 
 // NewRepositories creates all repository implementations and returns them grouped.

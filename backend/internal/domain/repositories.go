@@ -34,6 +34,7 @@ type ClubMemberRepository interface {
 	Create(ctx context.Context, member *ClubMember) (int64, error)
 	GetByClubAndPlayer(ctx context.Context, clubID, playerID int64) (*ClubMember, error)
 	GetByClubWithPlayers(ctx context.Context, clubID int64) ([]*ClubMemberWithPlayer, error)
+	CountActiveMembers(ctx context.Context, clubID int64) (int, error)
 	UpdateRole(ctx context.Context, clubID, playerID int64, role string) error
 	UpdateStatus(ctx context.Context, clubID, playerID int64, status string) error
 	UpdateAccepted(ctx context.Context, clubID, playerID int64, accepted bool) error
@@ -45,6 +46,7 @@ type GameRepository interface {
 	Create(ctx context.Context, game *Game) (int64, error)
 	GetByID(ctx context.Context, id int64) (*Game, error)
 	GetByClub(ctx context.Context, clubID int64) ([]*Game, error)
+	GetFinishedByClub(ctx context.Context, clubID int64) ([]*Game, error)
 	GetActiveByClub(ctx context.Context, clubID int64) (*Game, error)
 	Update(ctx context.Context, game *Game) error
 	Cancel(ctx context.Context, id int64) error
@@ -69,6 +71,7 @@ type GameParticipantRepository interface {
 	RegisterBuyIn(ctx context.Context, gameID, playerID int64, buyInCount int) error
 	RegisterRebuy(ctx context.Context, gameID, playerID int64, rebuyCount int) error
 	UpdateChipsEnd(ctx context.Context, gameID, playerID int64, chipsEnd float64) error
+	GetPlayerFinishedStats(ctx context.Context, playerID, clubID int64) (totalBuyInCount int, avgPlace float64, err error)
 }
 
 // EventRepository defines operations for event log persistence.
@@ -83,6 +86,7 @@ type EventRepository interface {
 type PlayerStatisticsRepository interface {
 	Ping(ctx context.Context) error
 	GetByPlayerAndClub(ctx context.Context, playerID, clubID int64) (*PlayerStatistics, error)
+	GetByClub(ctx context.Context, clubID int64) ([]*PlayerStatistics, error)
 	Upsert(ctx context.Context, stats *PlayerStatistics) error
 }
 

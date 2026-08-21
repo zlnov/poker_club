@@ -1821,15 +1821,312 @@ func (b *Bot) handleGameEndFinish(ctx context.Context, cb *tgbotapi.CallbackQuer
 		return
 	}
 
+	// Get finished game results for notifications.
+	game, participants, err := b.svc.GetFinishedGameResults(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.log.Warn("failed to get finished game results for notification", "error", err)
+	}
+
+	// Send group chat notification with results.
+	if err == nil {
+		groupText := formatFinishedGameGroupNotification(game, participants)
+		b.sendGroupNotification(ctx, clubID, groupText)
+	}
+
+	// Send personal messages to players with their results.
+	if err == nil {
+		for _, p := range participants {
+			if p.Player.TgUserID == nil {
+				continue
+			}
+			personalText := formatFinishedGamePersonalResult(game, p)
+			b.sendText(*p.Player.TgUserID, personalText)
+		}
+	}
+
 	text := "✅ Игра завершена!\n\nРезультаты рассчитаны и сохранены."
 	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Результаты", fmt.Sprintf("%s:%s:%s", cbGameResults, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
+		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("К игре", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
 		),
 	))
 }
 
-// --- Phase 04: Text formatting helpers ---
+// --- Phase 06: Statistics and game results handlers ---
+
+// handlePlayerStats displays the requesting player's aggregate statistics.
+func (b *Bot) handlePlayerStats(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, err := strconv.ParseInt(strings.TrimPrefix(cb.Data, cbPlayerStats+":"), 10, 64)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверный идентификатор клуба.")
+		return
+	}
+
+	stats, err := b.svc.GetPlayerStatistics(ctx, cb.From.ID, clubID)
+	if err != nil {
+		b.log.Error("failed to get player statistics", "error", err)
+		b.sendText(cb.Message.Chat.ID, "Ошибка при получении статистики.")
+		return
+	}
+
+	text := formatPlayerStatistics(stats)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, strconv.FormatInt(clubID, 10))),
+		),
+	)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleClubStats displays the club's aggregate statistics.
+func (b *Bot) handleClubStats(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, err := strconv.ParseInt(strings.TrimPrefix(cb.Data, cbClubStats+":"), 10, 64)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверный идентификатор клуба.")
+		return
+	}
+
+	stats, err := b.svc.GetClubStatistics(ctx, cb.From.ID, clubID)
+	if err != nil {
+		b.log.Error("failed to get club statistics", "error", err)
+		b.sendText(cb.Message.Chat.ID, "Ошибка при получении статистики.")
+		return
+	}
+
+	text := formatClubStatistics(stats)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, strconv.FormatInt(clubID, 10))),
+		),
+	)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleGameResults displays the results of a finished game.
+func (b *Bot) handleGameResults(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	game, participants, err := b.svc.GetFinishedGameResults(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := formatFinishedGameResults(game, participants)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("К игре", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
+		),
+	)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// --- Phase 06: Text formatting helpers ---
+
+// formatPlayerStatistics formats player aggregate statistics for display.
+func formatPlayerStatistics(stats *domain.PlayerStatisticsView) string {
+	var sb strings.Builder
+	sb.WriteString("📊 Моя статистика\n\n")
+
+	sb.WriteString(fmt.Sprintf("Всего игр: %d\n", stats.TotalGames))
+	sb.WriteString(fmt.Sprintf("Побед: %d\n", stats.GamesWon))
+	sb.WriteString(fmt.Sprintf("Winrate: %.1f%%\n", stats.Winrate))
+	sb.WriteString(fmt.Sprintf("Среднее место: %.1f\n", stats.AvgPlace))
+	sb.WriteString(fmt.Sprintf("Podiums: %d\n", stats.Podiums))
+	sb.WriteString(fmt.Sprintf("ITM: %.1f%%\n", stats.ITM))
+	sb.WriteString(fmt.Sprintf("ROI: %.1f%%\n", stats.ROI))
+
+	sb.WriteString(fmt.Sprintf("\nВложения:\n"))
+	sb.WriteString(fmt.Sprintf("  Buy-in: %s (%d)\n", formatFloat(stats.TotalBuyInAmount), stats.TotalBuyInCount))
+	sb.WriteString(fmt.Sprintf("  Rebuy: %s (%d)\n", formatFloat(stats.TotalRebuyAmount), stats.TotalRebuysCount))
+	sb.WriteString(fmt.Sprintf("  Всего вложено: %s\n", formatFloat(stats.TotalInvested)))
+
+	sb.WriteString(fmt.Sprintf("\nФишки:\n"))
+	sb.WriteString(fmt.Sprintf("  Всего фишек: %s\n", formatFloat(stats.TotalChips)))
+
+	sb.WriteString(fmt.Sprintf("\nПрибыль:\n"))
+	sb.WriteString(fmt.Sprintf("  Всего: %s\n", formatFloat(stats.TotalProfit)))
+	sb.WriteString(fmt.Sprintf("  Лучшая игра: %s\n", formatFloat(stats.BiggestWin)))
+	sb.WriteString(fmt.Sprintf("  Худшая игра: %s\n", formatFloat(stats.BiggestLoss)))
+
+	return sb.String()
+}
+
+// formatClubStatistics formats club aggregate statistics for display.
+func formatClubStatistics(stats *domain.ClubStatistics) string {
+	var sb strings.Builder
+	sb.WriteString("🏆 Статистика клуба\n\n")
+
+	sb.WriteString(fmt.Sprintf("Участники: %d\n", stats.TotalMembers))
+	sb.WriteString(fmt.Sprintf("Всего игр: %d\n", stats.TotalGames))
+	sb.WriteString(fmt.Sprintf("  Cash: %d\n", stats.CashGames))
+	sb.WriteString(fmt.Sprintf("  Tournament: %d\n", stats.TournamentGames))
+
+	sb.WriteString(fmt.Sprintf("\nФинансы:\n"))
+	sb.WriteString(fmt.Sprintf("  Buy-in: %s\n", formatFloat(stats.TotalBuyInAmount)))
+	sb.WriteString(fmt.Sprintf("  Rebuy: %s\n", formatFloat(stats.TotalRebuyAmount)))
+	sb.WriteString(fmt.Sprintf("  Банк: %s\n", formatFloat(stats.TotalBank)))
+
+	sb.WriteString(fmt.Sprintf("\nСредняя длительность игры: %s\n", formatDuration(stats.AverageGameDuration)))
+
+	return sb.String()
+}
+
+// formatFinishedGameResults formats the results of a finished game for display.
+func formatFinishedGameResults(game *domain.Game, participants []*domain.GameParticipantWithPlayer) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🎲 Игра #%d — результаты\n", game.ID))
+	sb.WriteString(fmt.Sprintf("Тип: %s\n", gameTypeLabel(game.GameType)))
+	sb.WriteString(fmt.Sprintf("Статус: %s\n", game.Status))
+	sb.WriteString(fmt.Sprintf("Начало: %s\n", game.StartTime.Format("02.01.2006 15:04")))
+	if game.EndTime != nil {
+		sb.WriteString(fmt.Sprintf("Конец: %s\n", game.EndTime.Format("02.01.2006 15:04")))
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	totalBank := 0.0
+	totalPayout := 0.0
+
+	sb.WriteString(fmt.Sprintf("\nУчастники (%d):\n", len(participants)))
+	for _, p := range participants {
+		name := memberShortName(p.Player)
+		buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+		rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+		totalInvested := buyInAmount + rebuyAmount
+
+		var payoutAmount float64
+		if p.PayoutAmount != nil {
+			payoutAmount = *p.PayoutAmount
+		}
+		profit := payoutAmount - totalInvested
+
+		var roi float64
+		if totalInvested > 0 {
+			roi = (profit / totalInvested) * 100
+		}
+
+		totalBank += totalInvested
+		totalPayout += payoutAmount
+
+		placeStr := "—"
+		if p.Place != nil {
+			placeStr = strconv.Itoa(*p.Place)
+		}
+
+		sb.WriteString(fmt.Sprintf("  %s — место: %s, вложено: %s, выплата: %s, прибыль: %s, ROI: %.1f%%\n",
+			name, placeStr, formatFloat(totalInvested), formatFloat(payoutAmount), formatFloat(profit), roi))
+	}
+
+	sb.WriteString(fmt.Sprintf("\nБанк: %s\n", formatFloat(totalBank)))
+	sb.WriteString(fmt.Sprintf("Выплаты: %s\n", formatFloat(totalPayout)))
+
+	return sb.String()
+}
+
+// formatFinishedGameGroupNotification formats the group chat notification text
+// sent after a game finishes.
+func formatFinishedGameGroupNotification(game *domain.Game, participants []*domain.GameParticipantWithPlayer) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("✅ Игра #%d завершена!\n\n", game.ID))
+	sb.WriteString(fmt.Sprintf("Тип: %s\n", gameTypeLabel(game.GameType)))
+	sb.WriteString(fmt.Sprintf("Начало: %s\n", game.StartTime.Format("02.01.2006 15:04")))
+	if game.EndTime != nil {
+		sb.WriteString(fmt.Sprintf("Конец: %s\n", game.EndTime.Format("02.01.2006 15:04")))
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	totalBank := 0.0
+	totalPayout := 0.0
+
+	sb.WriteString(fmt.Sprintf("\nРезультаты (%d участников):\n", len(participants)))
+	for _, p := range participants {
+		name := memberShortName(p.Player)
+		buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+		rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+		totalInvested := buyInAmount + rebuyAmount
+
+		var payoutAmount float64
+		if p.PayoutAmount != nil {
+			payoutAmount = *p.PayoutAmount
+		}
+		profit := payoutAmount - totalInvested
+
+		totalBank += totalInvested
+		totalPayout += payoutAmount
+
+		placeStr := "—"
+		if p.Place != nil {
+			placeStr = strconv.Itoa(*p.Place)
+		}
+
+		sb.WriteString(fmt.Sprintf("  %s — место: %s, прибыль: %s\n",
+			name, placeStr, formatFloat(profit)))
+	}
+
+	sb.WriteString(fmt.Sprintf("\nБанк: %s\n", formatFloat(totalBank)))
+	sb.WriteString(fmt.Sprintf("Выплаты: %s\n", formatFloat(totalPayout)))
+
+	return sb.String()
+}
+
+// formatFinishedGamePersonalResult formats the personal result message sent
+// to a player after a game finishes.
+func formatFinishedGamePersonalResult(game *domain.Game, p *domain.GameParticipantWithPlayer) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🎲 Игра #%d завершена!\n\n", game.ID))
+	sb.WriteString(fmt.Sprintf("Тип: %s\n", gameTypeLabel(game.GameType)))
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+	rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+	totalInvested := buyInAmount + rebuyAmount
+
+	var payoutAmount float64
+	if p.PayoutAmount != nil {
+		payoutAmount = *p.PayoutAmount
+	}
+	profit := payoutAmount - totalInvested
+
+	var roi float64
+	if totalInvested > 0 {
+		roi = (profit / totalInvested) * 100
+	}
+
+	placeStr := "—"
+	if p.Place != nil {
+		placeStr = strconv.Itoa(*p.Place)
+	}
+
+	sb.WriteString(fmt.Sprintf("Мои результаты:\n"))
+	sb.WriteString(fmt.Sprintf("  Место: %s\n", placeStr))
+	sb.WriteString(fmt.Sprintf("  Buy-in: %s (%d)\n", formatFloat(buyInAmount), p.BuyInCount))
+	sb.WriteString(fmt.Sprintf("  Rebuy: %s (%d)\n", formatFloat(rebuyAmount), p.RebuyCount))
+	sb.WriteString(fmt.Sprintf("  Вложено: %s\n", formatFloat(totalInvested)))
+	sb.WriteString(fmt.Sprintf("  Выплата: %s\n", formatFloat(payoutAmount)))
+	sb.WriteString(fmt.Sprintf("  Прибыль: %s\n", formatFloat(profit)))
+	sb.WriteString(fmt.Sprintf("  ROI: %.1f%%\n", roi))
+
+	return sb.String()
+}
 
 // formatGameMonitorText formats the game monitor text for banker/owner/admin.
 func formatGameMonitorText(game *domain.Game, participants []*domain.GameParticipantWithPlayer, currentStacks map[int64]float64) string {

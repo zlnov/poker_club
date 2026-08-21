@@ -538,6 +538,15 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 
 	case strings.HasPrefix(data, cbGameEndFinish+":"):
 		b.handleGameEndFinish(ctx, cb)
+
+	case strings.HasPrefix(data, cbPlayerStats+":"):
+		b.handlePlayerStats(ctx, cb)
+
+	case strings.HasPrefix(data, cbClubStats+":"):
+		b.handleClubStats(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameResults+":"):
+		b.handleGameResults(ctx, cb)
 	}
 }
 

@@ -2055,21 +2055,20 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		}
 	}
 
-	// Update player statistics for each participant.
-	for _, r := range results {
-		if err := s.updatePlayerStatistics(ctx, r.participant.PlayerID, game.ClubID, r); err != nil {
-			s.log.Warn("failed to update player statistics",
-				"error", err,
-				"player_id", r.participant.PlayerID,
-				"game_id", gameID,
-			)
-		}
-	}
-
 	// Transition game to finished and record end time.
 	endTime := time.Now()
 	if err := s.repos.Games.FinishGame(ctx, gameID, endTime); err != nil {
 		return fmt.Errorf("failed to finish game: %w", err)
+	}
+
+	// Recalculate player statistics from all finished games in the club.
+	// This ensures correct aggregates after game finish and after any
+	// future game adjustment (Phase 7).
+	if err := s.RecalculatePlayerStatistics(ctx, game.ClubID); err != nil {
+		s.log.Warn("failed to recalculate player statistics",
+			"error", err,
+			"club_id", game.ClubID,
+		)
 	}
 
 	s.log.Info("game finished",
@@ -2082,56 +2081,282 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 	return nil
 }
 
-// updatePlayerStatistics updates the cached aggregate statistics for a player
-// after a game finishes. It reads the existing statistics (if any), adds the
-// current game's values, recalculates derived metrics, and upserts.
-func (s *Service) updatePlayerStatistics(ctx context.Context, playerID, clubID int64, r *participantResult) error {
-	existing, err := s.repos.PlayerStatistics.GetByPlayerAndClub(ctx, playerID, clubID)
+// RecalculatePlayerStatistics recalculates the cached aggregate statistics
+// for all players in a club from all finished games. This is the single
+// source of truth for player_statistics and is called after game finish
+// and after any game adjustment (Phase 7).
+func (s *Service) RecalculatePlayerStatistics(ctx context.Context, clubID int64) error {
+	games, err := s.repos.Games.GetFinishedByClub(ctx, clubID)
 	if err != nil {
-		// No existing statistics — start fresh.
-		existing = &domain.PlayerStatistics{
-			PlayerID: playerID,
+		return fmt.Errorf("failed to get finished games: %w", err)
+	}
+
+	// Aggregate per player across all finished games.
+	type playerAgg struct {
+		totalGames       int
+		totalBuyInAmount float64
+		totalRebuyAmount float64
+		totalRebuysCount int
+		totalInvested    float64
+		totalChips       float64
+		totalProfit      float64
+		biggestWin       float64
+		biggestLoss      float64
+		gamesWon         int
+		podiums          int
+		tournamentCount  int
+		tournamentITM    int
+	}
+	aggs := make(map[int64]*playerAgg)
+
+	for _, game := range games {
+		participants, err := s.repos.GameParticipants.GetByGame(ctx, game.ID)
+		if err != nil {
+			s.log.Warn("failed to get participants for game during recalculation",
+				"error", err, "game_id", game.ID)
+			continue
+		}
+
+		rebuyPrice := 0.0
+		if game.RebuyPrice != nil {
+			rebuyPrice = *game.RebuyPrice
+		}
+
+		for _, p := range participants {
+			if p.ChipsEnd == nil {
+				continue
+			}
+
+			buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+			rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+			totalInvested := buyInAmount + rebuyAmount
+
+			var payoutAmount float64
+			if p.PayoutAmount != nil {
+				payoutAmount = *p.PayoutAmount
+			} else {
+				payoutAmount = *p.ChipsEnd * game.ChipValue
+			}
+			profit := payoutAmount - totalInvested
+
+			place := 0
+			if p.Place != nil {
+				place = *p.Place
+			}
+
+			agg, ok := aggs[p.PlayerID]
+			if !ok {
+				agg = &playerAgg{
+					biggestWin:  profit,
+					biggestLoss: profit,
+				}
+				aggs[p.PlayerID] = agg
+			}
+
+			agg.totalGames++
+			agg.totalBuyInAmount += buyInAmount
+			agg.totalRebuyAmount += rebuyAmount
+			agg.totalRebuysCount += p.RebuyCount
+			agg.totalInvested += totalInvested
+			agg.totalChips += *p.ChipsEnd
+			agg.totalProfit += profit
+
+			if profit > agg.biggestWin {
+				agg.biggestWin = profit
+			}
+			if profit < agg.biggestLoss {
+				agg.biggestLoss = profit
+			}
+
+			if place == 1 {
+				agg.gamesWon++
+			}
+
+			// Tournament-only metrics.
+			if game.GameType == "tournament" {
+				agg.tournamentCount++
+				if place > 0 && place <= 3 {
+					agg.tournamentITM++
+					agg.podiums++
+				}
+			}
+		}
+	}
+
+	// Upsert statistics for each player.
+	for playerID, agg := range aggs {
+		stats := &domain.PlayerStatistics{
+			PlayerID:         playerID,
+			ClubID:           clubID,
+			TotalGames:       agg.totalGames,
+			TotalBuyInAmount: agg.totalBuyInAmount,
+			TotalRebuyAmount: agg.totalRebuyAmount,
+			TotalRebuysCount: agg.totalRebuysCount,
+			TotalInvested:    agg.totalInvested,
+			TotalChips:       agg.totalChips,
+			TotalProfit:      agg.totalProfit,
+			BiggestWin:       agg.biggestWin,
+			BiggestLoss:      agg.biggestLoss,
+			GamesWon:         agg.gamesWon,
+			Podiums:          agg.podiums,
+		}
+
+		if agg.totalInvested > 0 {
+			stats.ROI = (agg.totalProfit / agg.totalInvested) * 100
+		}
+		if agg.tournamentCount > 0 {
+			stats.ITM = float64(agg.tournamentITM) / float64(agg.tournamentCount) * 100
+		}
+
+		if err := s.repos.PlayerStatistics.Upsert(ctx, stats); err != nil {
+			s.log.Warn("failed to upsert player statistics",
+				"error", err,
+				"player_id", playerID,
+				"club_id", clubID,
+			)
+		}
+	}
+
+	return nil
+}
+
+// GetPlayerStatistics returns the cached aggregate statistics for a player
+// in a club, augmented with derived metrics calculated at read time.
+func (s *Service) GetPlayerStatistics(ctx context.Context, tgUserID int64, clubID int64) (*domain.PlayerStatisticsView, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	stats, err := s.repos.PlayerStatistics.GetByPlayerAndClub(ctx, player.ID, clubID)
+	if err != nil {
+		// No cached statistics — return a zero-value view with derived metrics.
+		stats = &domain.PlayerStatistics{
+			PlayerID: player.ID,
 			ClubID:   clubID,
 		}
 	}
 
-	place := 0
-	if r.participant.Place != nil {
-		place = *r.participant.Place
+	// Calculate derived metrics at read time from game_participants.
+	totalBuyInCount, avgPlace, err := s.repos.GameParticipants.GetPlayerFinishedStats(ctx, player.ID, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get player finished stats: %w", err)
 	}
 
-	stats := &domain.PlayerStatistics{
-		PlayerID:         playerID,
-		ClubID:           clubID,
-		TotalGames:       existing.TotalGames + 1,
-		TotalBuyInAmount: existing.TotalBuyInAmount + r.buyInAmount,
-		TotalRebuyAmount: existing.TotalRebuyAmount + r.rebuyAmount,
-		TotalRebuysCount: existing.TotalRebuysCount + r.participant.RebuyCount,
-		TotalInvested:    existing.TotalInvested + r.totalInvested,
-		TotalChips:       existing.TotalChips + *r.participant.ChipsEnd,
-		TotalProfit:      existing.TotalProfit + r.profit,
-		BiggestWin:       existing.BiggestWin,
-		BiggestLoss:      existing.BiggestLoss,
-		GamesWon:         existing.GamesWon,
-		Podiums:          existing.Podiums,
-		ROI:              existing.ROI,
-		ITM:              existing.ITM,
+	var winrate float64
+	if stats.TotalGames > 0 {
+		winrate = float64(stats.GamesWon) / float64(stats.TotalGames) * 100
 	}
 
-	if r.profit > existing.BiggestWin {
-		stats.BiggestWin = r.profit
-	}
-	if r.profit < existing.BiggestLoss {
-		stats.BiggestLoss = r.profit
-	}
-	if place == 1 {
-		stats.GamesWon = existing.GamesWon + 1
+	return &domain.PlayerStatisticsView{
+		PlayerStatistics: *stats,
+		TotalBuyInCount:  totalBuyInCount,
+		Winrate:          winrate,
+		AvgPlace:         avgPlace,
+	}, nil
+}
+
+// GetClubStatistics returns aggregate statistics for a club.
+func (s *Service) GetClubStatistics(ctx context.Context, tgUserID int64, clubID int64) (*domain.ClubStatistics, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, err
 	}
 
-	// Recalculate ROI.
-	if stats.TotalInvested > 0 {
-		stats.ROI = (stats.TotalProfit / stats.TotalInvested) * 100
+	if _, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID); err != nil {
+		return nil, errors.New("access denied: user is not a member of this club")
 	}
 
-	return s.repos.PlayerStatistics.Upsert(ctx, stats)
+	totalMembers, err := s.repos.ClubMembers.CountActiveMembers(ctx, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count active members: %w", err)
+	}
+
+	games, err := s.repos.Games.GetFinishedByClub(ctx, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get finished games: %w", err)
+	}
+
+	stats := &domain.ClubStatistics{
+		TotalMembers: totalMembers,
+	}
+
+	var totalBuyInAmount, totalRebuyAmount, totalBank float64
+	var totalDuration time.Duration
+
+	for _, game := range games {
+		stats.TotalGames++
+		if game.GameType == "cash" {
+			stats.CashGames++
+		} else if game.GameType == "tournament" {
+			stats.TournamentGames++
+		}
+
+		if !game.StartTime.IsZero() && !game.EndTime.IsZero() {
+			totalDuration += game.EndTime.Sub(game.StartTime)
+		}
+
+		participants, err := s.repos.GameParticipants.GetByGame(ctx, game.ID)
+		if err != nil {
+			s.log.Warn("failed to get participants for game during club stats",
+				"error", err, "game_id", game.ID)
+			continue
+		}
+
+		rebuyPrice := 0.0
+		if game.RebuyPrice != nil {
+			rebuyPrice = *game.RebuyPrice
+		}
+
+		for _, p := range participants {
+			buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+			rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+			totalBuyInAmount += buyInAmount
+			totalRebuyAmount += rebuyAmount
+			totalBank += buyInAmount + rebuyAmount
+		}
+	}
+
+	stats.TotalBuyInAmount = totalBuyInAmount
+	stats.TotalRebuyAmount = totalRebuyAmount
+	stats.TotalBank = totalBank
+	if stats.TotalGames > 0 {
+		stats.AverageGameDuration = time.Duration(float64(totalDuration) / float64(stats.TotalGames))
+	}
+
+	return stats, nil
+}
+
+// GetFinishedGameResults returns a finished game and all its participants
+// with their calculated results, for display and notifications.
+func (s *Service) GetFinishedGameResults(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, []*domain.GameParticipantWithPlayer, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "finished" {
+		return nil, nil, errors.New("результаты доступны только для завершённых игр")
+	}
+
+	// Verify the user is a member of the club.
+	if _, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID); err != nil {
+		return nil, nil, errors.New("access denied: user is not a member of this club")
+	}
+
+	participants, err := s.repos.GameParticipants.GetByGameWithPlayers(ctx, gameID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	return game, participants, nil
 }

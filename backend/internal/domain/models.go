@@ -127,3 +127,24 @@ type PlayerStatistics struct {
 	ITM              float64
 	UpdatedAt        time.Time
 }
+
+// PlayerStatisticsView extends PlayerStatistics with derived metrics
+// that are calculated at read time from game_participants.
+type PlayerStatisticsView struct {
+	PlayerStatistics
+	TotalBuyInCount int     // SUM(buy_in_count) across finished games
+	Winrate         float64 // (games_won / total_games) × 100%
+	AvgPlace        float64 // AVG(place) across finished games
+}
+
+// ClubStatistics represents aggregate statistics for a club.
+type ClubStatistics struct {
+	TotalMembers         int
+	TotalGames           int
+	CashGames            int
+	TournamentGames      int
+	TotalBuyInAmount     float64
+	TotalRebuyAmount     float64
+	TotalBank            float64
+	AverageGameDuration  time.Duration
+}

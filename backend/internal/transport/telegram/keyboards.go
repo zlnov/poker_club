@@ -94,6 +94,11 @@ const (
 	cbGameEndCheckBank  = "game_end_check_bank"
 	cbGameEndConfirm    = "game_end_confirm"
 	cbGameEndFinish     = "game_end_finish"
+
+	// Phase 06: statistics and game results
+	cbPlayerStats       = "player_stats"
+	cbClubStats         = "club_stats"
+	cbGameResults       = "game_results"
 )
 
 // stateAction constants for user input state
@@ -230,6 +235,14 @@ func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Моя статистика", fmt.Sprintf("%s:%s", cbPlayerStats, id)),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Статистика клуба", fmt.Sprintf("%s:%s", cbClubStats, id)),
 	))
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -626,6 +639,12 @@ func gameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool, game
 		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Отменить игру", fmt.Sprintf("%s:%s:%s", cbGameCancel, cid, gid)),
+		))
+	}
+
+	if gameStatus == "finished" {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Результаты", fmt.Sprintf("%s:%s:%s", cbGameResults, cid, gid)),
 		))
 	}
 
