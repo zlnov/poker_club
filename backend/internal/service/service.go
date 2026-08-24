@@ -84,13 +84,11 @@ func (s *Service) RegisterTelegramUser(ctx context.Context, tgUserID int64, firs
 	}
 
 	player = &domain.Player{
-		FirstName:   firstName,
-		LastName:    lastName,
-		Nickname:    nickname,
-		PhoneNumber: "",
-		Email:       "",
-		Password:    "",
-		TgUserID:    &tgUserID,
+		FirstName: firstName,
+		LastName:  lastName,
+		Nickname:  nickname,
+		Password:  "",
+		TgUserID:  &tgUserID,
 	}
 	playerID, err := s.repos.Players.Create(ctx, player)
 	if err != nil {
@@ -1326,8 +1324,8 @@ func (s *Service) FixRebuy(ctx context.Context, tgUserID int64, clubID int64, ga
 
 	// Record correction event.
 	metadata := map[string]interface{}{
-		"old_rebuy_count": oldRebuyCount,
-		"new_rebuy_count": newRebuyCount,
+		"old_rebuy_count":  oldRebuyCount,
+		"new_rebuy_count":  newRebuyCount,
 		"old_rebuy_amount": oldRebuyAmount,
 		"new_rebuy_amount": newRebuyAmount,
 	}
@@ -1762,8 +1760,8 @@ func (s *Service) GetCurrentStacks(ctx context.Context, tgUserID int64, clubID i
 // TimerNotification contains a game with expired timer and the Telegram user IDs
 // of the banker and owner/admin who should be notified.
 type TimerNotification struct {
-	Game       *domain.Game
-	TgUserIDs  []int64
+	Game      *domain.Game
+	TgUserIDs []int64
 }
 
 // CheckExpiredTimers returns games with expired timers and the Telegram user IDs

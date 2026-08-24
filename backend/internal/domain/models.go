@@ -17,8 +17,8 @@ type Player struct {
 	FirstName   string
 	LastName    string
 	Nickname    string
-	PhoneNumber string
-	Email       string
+	PhoneNumber *string
+	Email       *string
 	Password    string
 	TgUserID    *int64
 	LastSeen    time.Time
@@ -139,12 +139,12 @@ type PlayerStatisticsView struct {
 
 // ClubStatistics represents aggregate statistics for a club.
 type ClubStatistics struct {
-	TotalMembers         int
-	TotalGames           int
-	CashGames            int
-	TournamentGames      int
-	TotalBuyInAmount     float64
-	TotalRebuyAmount     float64
-	TotalBank            float64
-	AverageGameDuration  time.Duration
+	TotalMembers        int
+	TotalGames          int
+	CashGames           int
+	TournamentGames     int
+	TotalBuyInAmount    float64
+	TotalRebuyAmount    float64
+	TotalBank           float64
+	AverageGameDuration time.Duration
 }
