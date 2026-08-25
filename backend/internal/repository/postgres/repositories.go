@@ -932,6 +932,35 @@ func (r *eventRepository) GetByGameAndPlayer(ctx context.Context, gameID, player
 	return events, nil
 }
 
+// GetByGame returns all events for a game, ordered by creation time.
+// This serves as the change log (журнал изменений) and user action log
+// (журнал действий пользователей).
+func (r *eventRepository) GetByGame(ctx context.Context, gameID int64) ([]*domain.Event, error) {
+	query := `
+		SELECT id, game_id, player_id, type, old_value, new_value, metadata, created_at, created_by
+		FROM events WHERE game_id = $1
+		ORDER BY created_at ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events by game: %w", err)
+	}
+	defer rows.Close()
+
+	var events []*domain.Event
+	for rows.Next() {
+		var e domain.Event
+		if err := rows.Scan(
+			&e.ID, &e.GameID, &e.PlayerID, &e.Type, &e.OldValue, &e.NewValue,
+			&e.Metadata, &e.CreatedAt, &e.CreatedBy,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+		events = append(events, &e)
+	}
+	return events, nil
+}
+
 // GetLastChipsSetByGame returns a map of playerID to current stack
 // based on the last chips_set event for each player in the game.
 func (r *eventRepository) GetLastChipsSetByGame(ctx context.Context, gameID int64) (map[int64]float64, error) {

@@ -1845,14 +1845,9 @@ func (b *Bot) handleGameEndFinish(ctx context.Context, cb *tgbotapi.CallbackQuer
 	}
 
 	text := "✅ Игра завершена!\n\nРезультаты рассчитаны и сохранены."
-	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Результаты", fmt.Sprintf("%s:%s:%s", cbGameResults, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("К игре", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
-		),
-	))
+	userRole, _ := b.svc.GetUserRole(ctx, cb.From.ID, clubID)
+	keyboard := gameResultsKeyboard(clubID, gameID, userRole)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
 }
 
 // --- Phase 06: Statistics and game results handlers ---
@@ -1920,11 +1915,11 @@ func (b *Bot) handleGameResults(ctx context.Context, cb *tgbotapi.CallbackQuery)
 	}
 
 	text := formatFinishedGameResults(game, participants)
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("К игре", fmt.Sprintf("%s:%s:%s", cbGameActiveBack, strconv.FormatInt(clubID, 10), strconv.FormatInt(gameID, 10))),
-		),
-	)
+
+	// Determine the user's role for the keyboard.
+	userRole, _ := b.svc.GetUserRole(ctx, cb.From.ID, clubID)
+
+	keyboard := gameResultsKeyboard(clubID, gameID, userRole)
 	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
 }
 
@@ -2511,5 +2506,162 @@ func formatGameBankCheckText(bankCheck *service.GameBankCheck) string {
 	} else {
 		sb.WriteString("\n✅ Суммы совпадают.")
 	}
+	return sb.String()
+}
+
+// --- Phase 07: Game result adjustment handlers ---
+
+// handleGameAdjustResults shows the player selection screen for adjusting
+// chips_end in a finished game. Only owner/admin can access this.
+func (b *Bot) handleGameAdjustResults(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	// Verify the user has permission to adjust results.
+	if err := b.svc.CheckPermission(ctx, cb.From.ID, clubID, service.PermAdjustGameResults); err != nil {
+		b.sendText(cb.Message.Chat.ID, "У вас нет прав для изменения результатов.")
+		return
+	}
+
+	game, participants, err := b.svc.GetFinishedGameResults(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	_ = game // game info not needed for player selection
+
+	text := "Выберите игрока для изменения chips_end:"
+	keyboard := gameAdjustPlayerSelectKeyboard(clubID, gameID, participants)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// handleGameAdjustPlayer handles selecting a player to adjust chips_end.
+// It sets the user's state to await chips_end input.
+func (b *Bot) handleGameAdjustPlayer(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, playerID, err := parseCallbackData3(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	// Verify the user has permission to adjust results.
+	if err := b.svc.CheckPermission(ctx, cb.From.ID, clubID, service.PermAdjustGameResults); err != nil {
+		b.sendText(cb.Message.Chat.ID, "У вас нет прав для изменения результатов.")
+		return
+	}
+
+	b.setState(cb.From.ID, stateGameAdjustChipsInput, clubID)
+	b.mu.Lock()
+	b.states[cb.From.ID].gameID = gameID
+	b.states[cb.From.ID].playerID = playerID
+	b.mu.Unlock()
+
+	b.sendText(cb.Message.Chat.ID, "Введите новое количество фишек (chips_end):")
+}
+
+// handleGameAdjustChipsInput processes the chips_end value entered by the user
+// for adjusting a finished game's result.
+func (b *Bot) handleGameAdjustChipsInput(ctx context.Context, msg *tgbotapi.Message) {
+	tgUserID := msg.From.ID
+
+	b.mu.RLock()
+	state, exists := b.states[tgUserID]
+	b.mu.RUnlock()
+
+	if !exists || state.action != stateGameAdjustChipsInput {
+		b.sendText(msg.Chat.ID, "Введите /cancel для отмены.")
+		return
+	}
+
+	chipsEnd, err := strconv.ParseFloat(msg.Text, 64)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Введите число (например: 2450):")
+		return
+	}
+
+	if chipsEnd < 0 {
+		b.sendText(msg.Chat.ID, "Количество фишек не может быть отрицательным. Введите число:")
+		return
+	}
+
+	clubID := state.clubID
+	gameID := state.gameID
+	playerID := state.playerID
+
+	if err := b.svc.AdjustGameResults(ctx, tgUserID, clubID, gameID, playerID, chipsEnd); err != nil {
+		b.sendText(msg.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	b.setState(tgUserID, stateIdle, 0)
+
+	// Refresh the results view.
+	game, participants, err := b.svc.GetFinishedGameResults(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		b.sendText(msg.Chat.ID, fmt.Sprintf("✅ chips_end изменен: %s", strconv.FormatFloat(chipsEnd, 'f', -1, 64)))
+		return
+	}
+
+	userRole, _ := b.svc.GetUserRole(ctx, tgUserID, clubID)
+	_ = formatFinishedGameResults(game, participants)
+	keyboard := gameResultsKeyboard(clubID, gameID, userRole)
+	b.sendTextWithKeyboard(msg.Chat.ID, fmt.Sprintf("✅ chips_end изменен: %s", strconv.FormatFloat(chipsEnd, 'f', -1, 64)), keyboard)
+}
+
+// handleGameEventLog displays the event log (журнал изменений) for a finished game.
+func (b *Bot) handleGameEventLog(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	clubID, gameID, err := parseCallbackData2(cb.Data)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, "Ошибка: неверные параметры.")
+		return
+	}
+
+	events, err := b.svc.GetGameEvents(ctx, cb.From.ID, clubID, gameID)
+	if err != nil {
+		b.sendText(cb.Message.Chat.ID, fmt.Sprintf("Ошибка: %v", err))
+		return
+	}
+
+	text := formatGameEventLog(events)
+	keyboard := gameEventLogKeyboard(clubID, gameID)
+	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, text, keyboard)
+}
+
+// formatGameEventLog formats the event log for display.
+func formatGameEventLog(events []*domain.Event) string {
+	var sb strings.Builder
+	sb.WriteString("📒 Журнал изменений\n\n")
+
+	if len(events) == 0 {
+		sb.WriteString("События не найдены.")
+		return sb.String()
+	}
+
+	for i, e := range events {
+		var oldValue, newValue string
+		if e.OldValue != nil {
+			oldValue = strconv.FormatFloat(*e.OldValue, 'f', -1, 64)
+		} else {
+			oldValue = "—"
+		}
+		if e.NewValue != nil {
+			newValue = strconv.FormatFloat(*e.NewValue, 'f', -1, 64)
+		} else {
+			newValue = "—"
+		}
+
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s: %s → %s\n",
+			i+1,
+			e.CreatedAt.Format("02.01.2006 15:04:05"),
+			e.Type,
+			oldValue,
+			newValue,
+		))
+	}
+
 	return sb.String()
 }

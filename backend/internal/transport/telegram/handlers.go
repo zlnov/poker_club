@@ -547,6 +547,15 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 
 	case strings.HasPrefix(data, cbGameResults+":"):
 		b.handleGameResults(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameAdjustResults+":"):
+		b.handleGameAdjustResults(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameAdjustPlayer+":"):
+		b.handleGameAdjustPlayer(ctx, cb)
+
+	case strings.HasPrefix(data, cbGameEventLog+":"):
+		b.handleGameEventLog(ctx, cb)
 	}
 }
 
@@ -586,6 +595,8 @@ func (b *Bot) handleTextMessage(ctx context.Context, update tgbotapi.Update) {
 		b.handleGameRebuyFixCountInput(ctx, msg, state)
 	case stateGameEndChipsInput:
 		b.handleGameEndChipsInput(ctx, msg)
+	case stateGameAdjustChipsInput:
+		b.handleGameAdjustChipsInput(ctx, msg)
 	default:
 		b.sendText(msg.Chat.ID, "Пожалуйста, используйте кнопки для продолжения.")
 	}

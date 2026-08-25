@@ -30,6 +30,7 @@ const (
 	PermCancelGame             Permission = "cancel_game"
 	PermInviteToGame           Permission = "invite_to_game"
 	PermManageGameParticipants Permission = "manage_game_participants"
+	PermAdjustGameResults      Permission = "adjust_game_results"
 )
 
 // rolePermissions maps each role to the permissions it grants.
@@ -39,14 +40,14 @@ var rolePermissions = map[string][]Permission{
 		PermInviteMember, PermListMembers, PermRemoveMember,
 		PermChangeMemberStatus, PermAssignAdmin, PermRemoveAdmin, PermConfirmEntry,
 		PermCreateGame, PermEditGame, PermCancelGame,
-		PermInviteToGame, PermManageGameParticipants,
+		PermInviteToGame, PermManageGameParticipants, PermAdjustGameResults,
 	},
 	"admin": {
 		PermViewClub,
 		PermInviteMember, PermListMembers, PermRemoveMember,
 		PermChangeMemberStatus, PermConfirmEntry,
 		PermCreateGame, PermEditGame,
-		PermInviteToGame, PermManageGameParticipants,
+		PermInviteToGame, PermManageGameParticipants, PermAdjustGameResults,
 	},
 	"member": {
 		PermListMembers,
@@ -167,7 +168,7 @@ func (s *Service) GetUserClubsAll(ctx context.Context, tgUserID int64) ([]*domai
 // The user must be the owner of the club, the club must not already have a
 // tg_chat_id, and the chat_id must not be used by another club.
 func (s *Service) BindGroupToClub(ctx context.Context, tgUserID int64, clubID int64, tgChatID int64) (*domain.Club, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermEditClub); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermEditClub); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +202,7 @@ func (s *Service) BindGroupToClub(ctx context.Context, tgUserID int64, clubID in
 
 // ChangeClubName changes the name of a club. Only the owner can perform this action.
 func (s *Service) ChangeClubName(ctx context.Context, tgUserID int64, clubID int64, newClubName string) error {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermEditClub); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermEditClub); err != nil {
 		return err
 	}
 
@@ -219,7 +220,7 @@ func (s *Service) ChangeClubName(ctx context.Context, tgUserID int64, clubID int
 
 // CloseClub deletes a club and all related data. Only the owner can perform this action.
 func (s *Service) CloseClub(ctx context.Context, tgUserID int64, clubID int64) error {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermCloseClub); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermCloseClub); err != nil {
 		return err
 	}
 
@@ -239,7 +240,7 @@ func (s *Service) CloseClub(ctx context.Context, tgUserID int64, clubID int64) e
 // have a player record (i.e. have been registered via NewChatMembers). A
 // club_member with status 'pending' and accepted=false is created.
 func (s *Service) InviteMember(ctx context.Context, tgUserID int64, clubID int64, inviteeTgUserID int64) (*domain.Player, *domain.Club, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermInviteMember); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermInviteMember); err != nil {
 		return nil, nil, err
 	}
 
@@ -402,7 +403,7 @@ func (s *Service) RejectInvitation(ctx context.Context, tgUserID int64, clubID i
 // The user must have accepted the invitation (accepted=true, status='pending').
 // After confirmation, the member status is set to 'active'.
 func (s *Service) ConfirmEntry(ctx context.Context, tgUserID int64, clubID int64, playerID int64) (*domain.Player, *domain.Club, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermConfirmEntry); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermConfirmEntry); err != nil {
 		return nil, nil, err
 	}
 
@@ -441,7 +442,7 @@ func (s *Service) ConfirmEntry(ctx context.Context, tgUserID int64, clubID int64
 // GetClubMembers returns all members of a club with their player info.
 // The requesting user must have at least the list_members permission.
 func (s *Service) GetClubMembers(ctx context.Context, tgUserID int64, clubID int64) ([]*domain.ClubMemberWithPlayer, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermListMembers); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermListMembers); err != nil {
 		return nil, err
 	}
 
@@ -456,7 +457,7 @@ func (s *Service) GetClubMembers(ctx context.Context, tgUserID int64, clubID int
 // RemoveMember removes a member from the club by setting their status to 'left'.
 // The requesting user must be the owner or an admin. The owner cannot be removed.
 func (s *Service) RemoveMember(ctx context.Context, tgUserID int64, clubID int64, playerID int64) (*domain.Player, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermRemoveMember); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermRemoveMember); err != nil {
 		return nil, err
 	}
 
@@ -490,7 +491,7 @@ func (s *Service) RemoveMember(ctx context.Context, tgUserID int64, clubID int64
 // ChangeMemberStatus changes a member's status (e.g., active → banned, banned → active).
 // The requesting user must be the owner or an admin. The owner's status cannot be changed.
 func (s *Service) ChangeMemberStatus(ctx context.Context, tgUserID int64, clubID int64, playerID int64, status string) (*domain.Player, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermChangeMemberStatus); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermChangeMemberStatus); err != nil {
 		return nil, err
 	}
 
@@ -525,7 +526,7 @@ func (s *Service) ChangeMemberStatus(ctx context.Context, tgUserID int64, clubID
 // AssignAdmin assigns the admin role to a club member.
 // Only the owner can perform this action. The owner cannot be assigned as admin.
 func (s *Service) AssignAdmin(ctx context.Context, tgUserID int64, clubID int64, playerID int64) (*domain.Player, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermAssignAdmin); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermAssignAdmin); err != nil {
 		return nil, err
 	}
 
@@ -559,7 +560,7 @@ func (s *Service) AssignAdmin(ctx context.Context, tgUserID int64, clubID int64,
 // RemoveAdmin removes the admin role from a club member, setting it back to 'member'.
 // Only the owner can perform this action.
 func (s *Service) RemoveAdmin(ctx context.Context, tgUserID int64, clubID int64, playerID int64) (*domain.Player, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermRemoveAdmin); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermRemoveAdmin); err != nil {
 		return nil, err
 	}
 
@@ -609,9 +610,9 @@ func (s *Service) getOwnerAndAdminTgUserIDs(ctx context.Context, clubID int64) (
 	return ids, nil
 }
 
-// checkPermission verifies that the Telegram user has the required permission
+// CheckPermission verifies that the Telegram user has the required permission
 // for the given club. It resolves tg_user_id -> player -> club_member -> role.
-func (s *Service) checkPermission(ctx context.Context, tgUserID int64, clubID int64, perm Permission) error {
+func (s *Service) CheckPermission(ctx context.Context, tgUserID int64, clubID int64, perm Permission) error {
 	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
 	if err != nil {
 		return fmt.Errorf("access denied: user not found: %w", err)
@@ -650,7 +651,7 @@ func (s *Service) checkPermission(ctx context.Context, tgUserID int64, clubID in
 // The game and its initial game_participants records are created atomically
 // in a single transaction.
 func (s *Service) CreateGame(ctx context.Context, tgUserID int64, clubID int64, game *domain.Game) (*domain.Game, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermCreateGame); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermCreateGame); err != nil {
 		return nil, err
 	}
 
@@ -718,7 +719,7 @@ func (s *Service) CreateGame(ctx context.Context, tgUserID int64, clubID int64, 
 
 // GetGame returns a game by ID if the user has permission to view it.
 func (s *Service) GetGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
 		return nil, err
 	}
 
@@ -736,7 +737,7 @@ func (s *Service) GetGame(ctx context.Context, tgUserID int64, clubID int64, gam
 
 // GetClubGames returns all games for a club.
 func (s *Service) GetClubGames(ctx context.Context, tgUserID int64, clubID int64) ([]*domain.Game, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
 		return nil, err
 	}
 
@@ -746,7 +747,7 @@ func (s *Service) GetClubGames(ctx context.Context, tgUserID int64, clubID int64
 // UpdateGame updates game parameters. Only allowed in planned status.
 // Only owner/admin can change parameters.
 func (s *Service) UpdateGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, game *domain.Game) (*domain.Game, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermEditGame); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermEditGame); err != nil {
 		return nil, err
 	}
 
@@ -784,7 +785,7 @@ func (s *Service) UpdateGame(ctx context.Context, tgUserID int64, clubID int64, 
 // CancelGame cancels a game. Only owner/admin can cancel.
 // Only allowed in planned status.
 func (s *Service) CancelGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64) error {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermCancelGame); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermCancelGame); err != nil {
 		return err
 	}
 
@@ -817,7 +818,7 @@ func (s *Service) CancelGame(ctx context.Context, tgUserID int64, clubID int64, 
 // InviteToGame invites a club member to a game. Only owner/admin can invite.
 // The game must be in planned status.
 func (s *Service) InviteToGame(ctx context.Context, tgUserID int64, clubID int64, gameID int64, inviteeTgUserID int64) (*domain.Player, *domain.Game, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermInviteToGame); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermInviteToGame); err != nil {
 		return nil, nil, err
 	}
 
@@ -984,7 +985,7 @@ func (s *Service) DeclineGameParticipation(ctx context.Context, tgUserID int64, 
 // ConfirmGameParticipation allows owner/admin to confirm a player's accepted
 // invitation to a game. The player must have accepted status.
 func (s *Service) ConfirmGameParticipation(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) (*domain.Player, *domain.Game, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
 		return nil, nil, err
 	}
 
@@ -1032,7 +1033,7 @@ func (s *Service) ConfirmGameParticipation(ctx context.Context, tgUserID int64, 
 // RemoveGameParticipant removes a player from a game. Only owner/admin can do this.
 // The game must be in planned status.
 func (s *Service) RemoveGameParticipant(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) (*domain.Player, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermManageGameParticipants); err != nil {
 		return nil, err
 	}
 
@@ -1075,7 +1076,7 @@ func (s *Service) RemoveGameParticipant(ctx context.Context, tgUserID int64, clu
 
 // GetGameParticipants returns all participants of a game with player info.
 func (s *Service) GetGameParticipants(ctx context.Context, tgUserID int64, clubID int64, gameID int64) ([]*domain.GameParticipantWithPlayer, error) {
-	if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
 		return nil, err
 	}
 
@@ -1741,7 +1742,7 @@ func (s *Service) GetActiveGameByPlayer(ctx context.Context, clubID int64, playe
 func (s *Service) GetCurrentStacks(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (map[int64]float64, error) {
 	if _, _, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID); err != nil {
 		// Fall back to permission check for non-banker users.
-		if err := s.checkPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+		if err := s.CheckPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
 			return nil, err
 		}
 	}
@@ -1964,6 +1965,43 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		}
 	}
 
+	// Recalculate all results (payout, profit, ROI, place) and save them.
+	if err := s.recalculateGameResults(ctx, game, participants); err != nil {
+		return fmt.Errorf("failed to recalculate game results: %w", err)
+	}
+
+	// Transition game to finished and record end time.
+	endTime := time.Now()
+	if err := s.repos.Games.FinishGame(ctx, gameID, endTime); err != nil {
+		return fmt.Errorf("failed to finish game: %w", err)
+	}
+
+	// Recalculate player statistics from all finished games in the club.
+	// This ensures correct aggregates after game finish and after any
+	// future game adjustment (Phase 7).
+	if err := s.RecalculatePlayerStatistics(ctx, game.ClubID); err != nil {
+		s.log.Warn("failed to recalculate player statistics",
+			"error", err,
+			"club_id", game.ClubID,
+		)
+	}
+
+	s.log.Info("game finished",
+		"game_id", gameID,
+		"club_id", clubID,
+		"tg_user_id", tgUserID,
+		"end_time", endTime,
+	)
+
+	return nil
+}
+
+// recalculateGameResults computes payout_amount, profit, ROI, and place for
+// every participant in a Cash game, distributes any bank mismatch among
+// players with positive profit, and persists the results. It is the single
+// source of truth for result calculation, called both during FinishGame
+// (Phase 5) and after result adjustments (Phase 7).
+func (s *Service) recalculateGameResults(ctx context.Context, game *domain.Game, participants []*domain.GameParticipant) error {
 	rebuyPrice := 0.0
 	if game.RebuyPrice != nil {
 		rebuyPrice = *game.RebuyPrice
@@ -2022,7 +2060,7 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		}
 
 		s.log.Warn("bank mismatch resolved",
-			"game_id", gameID,
+			"game_id", game.ID,
 			"difference", diff,
 			"adjusted_players", len(positiveProfit),
 		)
@@ -2053,15 +2091,103 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		}
 	}
 
-	// Transition game to finished and record end time.
-	endTime := time.Now()
-	if err := s.repos.Games.FinishGame(ctx, gameID, endTime); err != nil {
-		return fmt.Errorf("failed to finish game: %w", err)
+	return nil
+}
+
+// --- Phase 07: Game result adjustment ---
+
+// AdjustGameResults allows an owner or admin to correct the final chip stack
+// (chips_end) for a participant in a finished Cash game. After updating
+// chips_end, all derived metrics (payout_amount, profit, ROI, place) are
+// recalculated for every participant, the correction is recorded in the
+// event log, and player statistics are refreshed.
+//
+// Only owner/admin can perform this action (FS 1.10, 4.1.3). Tournament
+// result logic is not implemented.
+func (s *Service) AdjustGameResults(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64, chipsEnd float64) error {
+	if chipsEnd < 0 {
+		return errors.New("количество фишек не может быть отрицательным")
+	}
+
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermAdjustGameResults); err != nil {
+		return err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.ClubID != clubID {
+		return errors.New("игра не принадлежит этому клубу")
+	}
+
+	if game.Status != "finished" {
+		return errors.New("корректировка доступна только для завершенных игр")
+	}
+
+	// Tournament result logic is not implemented.
+	if game.GameType != "cash" {
+		return errors.New("корректировка tournament игр не реализована")
+	}
+
+	// Verify the player is a participant.
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
+	if err != nil {
+		return errors.New("игрок не является участником игры")
+	}
+
+	// Record the old chips_end value for the event log.
+	oldChipsEnd := 0.0
+	if participant.ChipsEnd != nil {
+		oldChipsEnd = *participant.ChipsEnd
+	}
+
+	// Update chips_end.
+	if err := s.repos.GameParticipants.UpdateChipsEnd(ctx, gameID, playerID, chipsEnd); err != nil {
+		return fmt.Errorf("failed to update chips_end: %w", err)
+	}
+
+	// Resolve the club member ID of the user making the adjustment.
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return err
+	}
+	member, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID)
+	if err != nil {
+		return err
+	}
+
+	// Record a correction event (журнал изменений / журнал действий пользователей).
+	metadata := map[string]interface{}{
+		"field":         "chips_end",
+		"old_chips_end": oldChipsEnd,
+		"new_chips_end": chipsEnd,
+	}
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  playerID,
+		Type:      "correction",
+		OldValue:  &oldChipsEnd,
+		NewValue:  &chipsEnd,
+		Metadata:  metadata,
+		CreatedBy: member.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		s.log.Warn("failed to create correction event", "error", err)
+	}
+
+	// Reload participants (chips_end was just updated) and recalculate all results.
+	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to get game participants: %w", err)
+	}
+
+	if err := s.recalculateGameResults(ctx, game, participants); err != nil {
+		return fmt.Errorf("failed to recalculate game results: %w", err)
 	}
 
 	// Recalculate player statistics from all finished games in the club.
-	// This ensures correct aggregates after game finish and after any
-	// future game adjustment (Phase 7).
 	if err := s.RecalculatePlayerStatistics(ctx, game.ClubID); err != nil {
 		s.log.Warn("failed to recalculate player statistics",
 			"error", err,
@@ -2069,14 +2195,36 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		)
 	}
 
-	s.log.Info("game finished",
+	s.log.Info("game results adjusted",
 		"game_id", gameID,
 		"club_id", clubID,
+		"player_id", playerID,
+		"old_chips_end", oldChipsEnd,
+		"new_chips_end", chipsEnd,
 		"tg_user_id", tgUserID,
-		"end_time", endTime,
 	)
 
 	return nil
+}
+
+// GetGameEvents returns all events for a game, serving as the change log
+// (журнал изменений) and user action log (журнал действий пользователей).
+// Any club member can view the event log.
+func (s *Service) GetGameEvents(ctx context.Context, tgUserID int64, clubID int64, gameID int64) ([]*domain.Event, error) {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	return s.repos.Events.GetByGame(ctx, gameID)
 }
 
 // RecalculatePlayerStatistics recalculates the cached aggregate statistics

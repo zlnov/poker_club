@@ -79,6 +79,7 @@ type EventRepository interface {
 	Ping(ctx context.Context) error
 	Create(ctx context.Context, event *Event) (int64, error)
 	GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) ([]*Event, error)
+	GetByGame(ctx context.Context, gameID int64) ([]*Event, error)
 	GetLastChipsSetByGame(ctx context.Context, gameID int64) (map[int64]float64, error)
 }
 

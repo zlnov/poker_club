@@ -99,6 +99,12 @@ const (
 	cbPlayerStats       = "player_stats"
 	cbClubStats         = "club_stats"
 	cbGameResults       = "game_results"
+
+	// Phase 07: game result adjustment
+	cbGameAdjustResults     = "game_adjust_results"
+	cbGameAdjustPlayer      = "game_adjust_player"
+	cbGameAdjustConfirm     = "game_adjust_confirm"
+	cbGameEventLog          = "game_event_log"
 )
 
 // stateAction constants for user input state
@@ -120,6 +126,9 @@ const (
 
 	// Phase 05: game end states
 	stateGameEndChipsInput = "game_end_chips_input"
+
+	// Phase 07: game result adjustment states
+	stateGameAdjustChipsInput = "game_adjust_chips_input"
 )
 
 // mainMenuKeyboardMarkup returns the inline keyboard for the main menu.
@@ -1257,6 +1266,93 @@ func gameEndConfirmKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup 
 			{
 				tgbotapi.NewInlineKeyboardButtonData("Да", fmt.Sprintf("%s:%s:%s", cbGameEndFinish, cid, gid)),
 				tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameEnd, cid, gid)),
+			},
+		},
+	}
+}
+
+// --- Phase 07: Game result adjustment keyboards ---
+
+// gameResultsKeyboard returns the inline keyboard for the finished game results view.
+// Shows "Изменить результаты" and "Журнал изменений" buttons for owner/admin.
+func gameResultsKeyboard(clubID, gameID int64, userRole string) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
+
+	canManage := userRole == "owner" || userRole == "admin"
+
+	if canManage {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Изменить результаты", fmt.Sprintf("%s:%s:%s", cbGameAdjustResults, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Журнал изменений", fmt.Sprintf("%s:%s:%s", cbGameEventLog, cid, gid)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameBack, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// gameAdjustPlayerSelectKeyboard builds an inline keyboard for selecting a player
+// whose chips_end to adjust in a finished game.
+func gameAdjustPlayerSelectKeyboard(clubID, gameID int64, participants []*domain.GameParticipantWithPlayer) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(participants)+1)
+
+	for _, p := range participants {
+		label := p.Player.FirstName
+		if p.Player.LastName != "" {
+			label += " " + p.Player.LastName
+		}
+		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
+			label += " (@" + p.Player.Nickname + ")"
+		}
+		chipsStr := "—"
+		if p.ChipsEnd != nil {
+			chipsStr = formatFloat(*p.ChipsEnd)
+		}
+		label += fmt.Sprintf(" [%s]", chipsStr)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameAdjustPlayer, cid, gid, p.PlayerID)),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameResults, cid, gid)),
+	))
+
+	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+}
+
+// gameAdjustConfirmKeyboard returns the confirm/cancel keyboard for a chips_end adjustment.
+func gameAdjustConfirmKeyboard(clubID, gameID, playerID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	pid := strconv.FormatInt(playerID, 10)
+	return tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonData("Подтвердить", fmt.Sprintf("%s:%s:%s:%s", cbGameAdjustConfirm, cid, gid, pid)),
+				tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameAdjustResults, cid, gid)),
+			},
+		},
+	}
+}
+
+// gameEventLogKeyboard returns the keyboard for the event log view.
+func gameEventLogKeyboard(clubID, gameID int64) tgbotapi.InlineKeyboardMarkup {
+	cid := strconv.FormatInt(clubID, 10)
+	gid := strconv.FormatInt(gameID, 10)
+	return tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s:%s", cbGameResults, cid, gid)),
 			},
 		},
 	}
