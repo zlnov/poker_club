@@ -61,6 +61,12 @@ func (b *Bot) handleStart(ctx context.Context, msg *tgbotapi.Message) {
 		return
 	}
 
+	// Deep link: stats_<club_id> (Group → Private transition for personal stats)
+	if strings.HasPrefix(args, "stats_") {
+		b.handleStartWithStats(ctx, msg, args)
+		return
+	}
+
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
 	nickname := msg.From.UserName
@@ -140,6 +146,48 @@ func (b *Bot) handleStartWithClub(ctx context.Context, msg *tgbotapi.Message, ar
 
 	// Show the club main menu in private chat.
 	b.sendTextWithKeyboard(msg.Chat.ID, "Меню клуба:", b.clubMainMenu(ctx, clubID, msg.From.ID, msg.Chat.ID))
+}
+
+// handleStartWithStats processes a /start command with a deep link parameter
+// "stats_<club_id>". This is the Group → Private Chat transition for personal
+// statistics: the user clicks "Моя статистика" in the group chat and lands in
+// their private chat with the stats displayed.
+func (b *Bot) handleStartWithStats(ctx context.Context, msg *tgbotapi.Message, args string) {
+	clubID, err := strconv.ParseInt(strings.TrimPrefix(args, "stats_"), 10, 64)
+	if err != nil {
+		b.sendText(msg.Chat.ID, "Ошибка: неверная ссылка.")
+		return
+	}
+
+	// Register the user (if new) — needed to resolve player ID for stats.
+	firstName := msg.From.FirstName
+	lastName := msg.From.LastName
+	nickname := msg.From.UserName
+	if nickname == "" {
+		nickname = firstName
+	}
+	_, err = b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	if err != nil {
+		b.log.Error("failed to register player on /start stats deep link", "error", err)
+		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
+		return
+	}
+
+	// Show the player's statistics in the private chat.
+	stats, err := b.svc.GetPlayerStatistics(ctx, msg.From.ID, clubID)
+	if err != nil {
+		b.log.Error("failed to get player statistics", "error", err)
+		b.sendText(msg.Chat.ID, "Ошибка при получении статистики.")
+		return
+	}
+
+	text := formatPlayerStatistics(stats)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, strconv.FormatInt(clubID, 10))),
+		),
+	)
+	b.sendTextWithKeyboard(msg.Chat.ID, text, keyboard)
 }
 
 // handleMenu processes the /menu command. It shows the appropriate menu based
@@ -310,9 +358,11 @@ func (b *Bot) handleCallback(ctx context.Context, update tgbotapi.Update) {
 	case strings.HasPrefix(data, cbListMembers+":"):
 		clubID, err := strconv.ParseInt(strings.TrimPrefix(data, cbListMembers+":"), 10, 64)
 		if err != nil {
+			b.log.Error("cbListMembers: failed to parse clubID", "data", data, "error", err)
 			b.sendText(chatID, "Ошибка: неверный идентификатор клуба.")
 			return
 		}
+		b.log.Info("cbListMembers callback received", "club_id", clubID, "tg_user_id", cb.From.ID, "chat_id", chatID, "msg_id", msgID)
 		b.showClubMembers(ctx, chatID, msgID, clubID, cb.From.ID)
 
 	case strings.HasPrefix(data, cbMemberAction+":"):
@@ -854,13 +904,24 @@ func (b *Bot) handleInviteMember(ctx context.Context, msg *tgbotapi.Message, clu
 }
 
 // showClubMembers displays the list of club members.
+// In group chats, the list is read-only (no management buttons).
+// In private chats, members are clickable for management actions.
 func (b *Bot) showClubMembers(ctx context.Context, chatID int64, msgID int, clubID int64, tgUserID int64) {
+	b.log.Info("showClubMembers called",
+		"chat_id", chatID,
+		"msg_id", msgID,
+		"club_id", clubID,
+		"tg_user_id", tgUserID,
+		"is_private", chatID > 0,
+	)
 	members, err := b.svc.GetClubMembers(ctx, tgUserID, clubID)
 	if err != nil {
-		b.log.Error("failed to get club members", "error", err)
+		b.log.Error("failed to get club members", "error", err, "club_id", clubID, "tg_user_id", tgUserID)
 		b.editMessageText(chatID, msgID, "Ошибка при получении списка участников.", b.clubMainMenu(ctx, clubID, tgUserID, chatID))
 		return
 	}
+
+	b.log.Info("GetClubMembers succeeded", "club_id", clubID, "member_count", len(members))
 
 	if len(members) == 0 {
 		b.editMessageText(chatID, msgID, "В клубе пока нет участников.", b.clubMainMenu(ctx, clubID, tgUserID, chatID))
@@ -889,7 +950,8 @@ func (b *Bot) showClubMembers(ctx context.Context, chatID int64, msgID int, club
 		sb.WriteString("\n")
 	}
 
-	b.editMessageText(chatID, msgID, sb.String(), memberListKeyboard(clubID, members))
+	isPrivate := chatID > 0
+	b.editMessageText(chatID, msgID, sb.String(), memberListKeyboard(clubID, members, isPrivate))
 }
 
 // handleMemberAction displays management options for a specific member.

@@ -89,22 +89,22 @@ const (
 	cbGameActiveBack       = "game_active_back"
 
 	// Phase 05: game end
-	cbGameEnd           = "game_end"
-	cbGameEndPlayer     = "game_end_player"
-	cbGameEndCheckBank  = "game_end_check_bank"
-	cbGameEndConfirm    = "game_end_confirm"
-	cbGameEndFinish     = "game_end_finish"
+	cbGameEnd          = "game_end"
+	cbGameEndPlayer    = "game_end_player"
+	cbGameEndCheckBank = "game_end_check_bank"
+	cbGameEndConfirm   = "game_end_confirm"
+	cbGameEndFinish    = "game_end_finish"
 
 	// Phase 06: statistics and game results
-	cbPlayerStats       = "player_stats"
-	cbClubStats         = "club_stats"
-	cbGameResults       = "game_results"
+	cbPlayerStats = "player_stats"
+	cbClubStats   = "club_stats"
+	cbGameResults = "game_results"
 
 	// Phase 07: game result adjustment
-	cbGameAdjustResults     = "game_adjust_results"
-	cbGameAdjustPlayer      = "game_adjust_player"
-	cbGameAdjustConfirm     = "game_adjust_confirm"
-	cbGameEventLog          = "game_event_log"
+	cbGameAdjustResults = "game_adjust_results"
+	cbGameAdjustPlayer  = "game_adjust_player"
+	cbGameAdjustConfirm = "game_adjust_confirm"
+	cbGameEventLog      = "game_event_log"
 )
 
 // stateAction constants for user input state
@@ -208,21 +208,21 @@ func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool, botUser
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Клуб", fmt.Sprintf("%s:%s", cbClubMenu, id)),
+		tgbotapi.NewInlineKeyboardButtonData("♣️ Клуб", fmt.Sprintf("%s:%s", cbClubMenu, id)),
 	))
 
 	if isPrivate {
 		// Private chat: show "Управление" as callback button for owner/admin only.
 		if userRole == "owner" || userRole == "admin" {
 			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Управление", fmt.Sprintf("%s:%s", cbManageMenu, id)),
+				tgbotapi.NewInlineKeyboardButtonData("⚙️ Управление", fmt.Sprintf("%s:%s", cbManageMenu, id)),
 			))
 		}
 	} else {
 		// Group chat: show "Управление" as URL button (deep link) for all roles.
 		deepLink := fmt.Sprintf("https://t.me/%s?start=club_%s", botUsername, id)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("Управление", deepLink),
+			tgbotapi.NewInlineKeyboardButtonURL("⚙️ Управление", deepLink),
 		))
 	}
 
@@ -234,28 +234,32 @@ func clubMainMenuKeyboard(clubID int64, userRole string, isPrivate bool, botUser
 }
 
 // clubSubMenuKeyboard returns the "Клуб" submenu with info and member list.
-func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool) tgbotapi.InlineKeyboardMarkup {
+// In group chats, "Моя статистика" is a deep-link URL button that opens the
+// player's private chat so personal statistics are never shown in the group.
+func clubSubMenuKeyboard(clubID int64, userRole string, isPrivate bool, botUsername string) tgbotapi.InlineKeyboardMarkup {
 	id := strconv.FormatInt(clubID, 10)
-	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s", cbClubInfo, id)),
+		tgbotapi.NewInlineKeyboardButtonData("📋 Инфо", fmt.Sprintf("%s:%s", cbClubInfo, id)),
+		tgbotapi.NewInlineKeyboardButtonData("👥 Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
 	))
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Список участников", fmt.Sprintf("%s:%s", cbListMembers, id)),
-	))
+	if isPrivate {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💹 Статистика клуба", fmt.Sprintf("%s:%s", cbClubStats, id)),
+			tgbotapi.NewInlineKeyboardButtonData("📈 Моя статистика", fmt.Sprintf("%s:%s", cbPlayerStats, id)),
+		))
+	} else {
+		deepLink := fmt.Sprintf("https://t.me/%s?start=stats_%s", botUsername, id)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💹 Статистика клуба", fmt.Sprintf("%s:%s", cbClubStats, id)),
+			tgbotapi.NewInlineKeyboardButtonURL("📈 Моя статистика", deepLink),
+		))
+	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Моя статистика", fmt.Sprintf("%s:%s", cbPlayerStats, id)),
-	))
-
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Статистика клуба", fmt.Sprintf("%s:%s", cbClubStats, id)),
-	))
-
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("%s:%s", cbBackToClubMenu, id)),
 	))
 
 	return tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
@@ -268,28 +272,23 @@ func manageSubMenuKeyboard(clubID int64, userRole string) tgbotapi.InlineKeyboar
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 7)
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
-	))
-
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Список игр", fmt.Sprintf("%s:%s", cbGameList, id)),
 		tgbotapi.NewInlineKeyboardButtonData("Создать игру", fmt.Sprintf("%s:%s", cbCreateGame, id)),
 	))
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Список игр", fmt.Sprintf("%s:%s", cbGameList, id)),
-	))
-
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("Состав клуба", fmt.Sprintf("%s:%s", cbListMembers, id)),
-	))
-
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Пригласить участников", fmt.Sprintf("%s:%s", cbInviteMember, id)),
+		tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s", cbInviteMember, id)),
 	))
 
 	if userRole == "owner" {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
 			tgbotapi.NewInlineKeyboardButtonData("Закрыть клуб", fmt.Sprintf("%s:%s", cbCloseClub, id)),
+		))
+	} else {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Изменить название", fmt.Sprintf("%s:%s", cbChangeName, id)),
 		))
 	}
 
@@ -301,13 +300,21 @@ func manageSubMenuKeyboard(clubID int64, userRole string) tgbotapi.InlineKeyboar
 }
 
 // memberListKeyboard builds an inline keyboard listing club members for selection.
-func memberListKeyboard(clubID int64, members []*domain.ClubMemberWithPlayer) tgbotapi.InlineKeyboardMarkup {
+// In group chats (isPrivate=false), members are shown as plain text (read-only).
+// In private chats (isPrivate=true), members are clickable for management actions.
+func memberListKeyboard(clubID int64, members []*domain.ClubMemberWithPlayer, isPrivate bool) tgbotapi.InlineKeyboardMarkup {
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(members)+1)
 	for _, m := range members {
 		label := memberLabel(m)
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%d:%d", cbMemberAction, clubID, m.PlayerID)),
-		))
+		if isPrivate {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%d:%d", cbMemberAction, clubID, m.PlayerID)),
+			))
+		} else {
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(label, "noop"),
+			))
+		}
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("Назад", cbBackClubs),
@@ -385,24 +392,24 @@ func memberActionKeyboard(clubID, playerID int64, member *domain.ClubMemberWithP
 		}
 	}
 
-	// Ban/Unban (owner/admin)
+	// Ban/Unban and Kick (owner/admin) — combined in one row
 	if canManage {
+		banLabel := ""
+		banCb := ""
 		if member.Status == "active" {
-			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Забанить", fmt.Sprintf("%s:%s:%s", cbBanMember, id, pid)),
-			))
+			banLabel = "Забанить"
+			banCb = cbBanMember
 		} else if member.Status == "banned" {
+			banLabel = "Разбанить"
+			banCb = cbUnbanMember
+		}
+
+		if banLabel != "" && (member.Status == "active" || member.Status == "banned") {
 			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Разбанить", fmt.Sprintf("%s:%s:%s", cbUnbanMember, id, pid)),
+				tgbotapi.NewInlineKeyboardButtonData(banLabel, fmt.Sprintf("%s:%s:%s", banCb, id, pid)),
+				tgbotapi.NewInlineKeyboardButtonData("Исключить", fmt.Sprintf("%s:%s:%s", cbKickMember, id, pid)),
 			))
 		}
-	}
-
-	// Kick (change to left) - only for active or banned members (owner/admin)
-	if canManage && (member.Status == "active" || member.Status == "banned") {
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Исключить", fmt.Sprintf("%s:%s:%s", cbKickMember, id, pid)),
-		))
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -624,14 +631,25 @@ func gameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool, game
 	gid := strconv.FormatInt(gameID, 10)
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 8)
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s:%s", cbGameInfo, cid, gid)),
-	))
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("Участники", fmt.Sprintf("%s:%s:%s", cbGameParticipants, cid, gid)),
-	))
-
 	canManage := isBanker || userRole == "owner" || userRole == "admin"
+
+	if canManage {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s:%s", cbGameInfo, cid, gid)),
+			tgbotapi.NewInlineKeyboardButtonData("Изменить параметры", fmt.Sprintf("%s:%s:%s", cbGameChangeParams, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Участники", fmt.Sprintf("%s:%s:%s", cbGameParticipants, cid, gid)),
+			tgbotapi.NewInlineKeyboardButtonData("Пригласить", fmt.Sprintf("%s:%s:%s", cbGameInvite, cid, gid)),
+		))
+	} else {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Инфо", fmt.Sprintf("%s:%s:%s", cbGameInfo, cid, gid)),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Участники", fmt.Sprintf("%s:%s:%s", cbGameParticipants, cid, gid)),
+		))
+	}
 
 	if gameStatus == "planned" && canManage {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -639,21 +657,14 @@ func gameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool, game
 		))
 	}
 
-	if canManage {
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Пригласить", fmt.Sprintf("%s:%s:%s", cbGameInvite, cid, gid)),
-		))
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Изменить параметры", fmt.Sprintf("%s:%s:%s", cbGameChangeParams, cid, gid)),
-		))
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Отменить игру", fmt.Sprintf("%s:%s:%s", cbGameCancel, cid, gid)),
-		))
-	}
-
 	if gameStatus == "finished" {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Результаты", fmt.Sprintf("%s:%s:%s", cbGameResults, cid, gid)),
+			tgbotapi.NewInlineKeyboardButtonData("Отменить игру", fmt.Sprintf("%s:%s:%s", cbGameCancel, cid, gid)),
+		))
+	} else if canManage {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Отменить игру", fmt.Sprintf("%s:%s:%s", cbGameCancel, cid, gid)),
 		))
 	}
 
@@ -668,7 +679,7 @@ func gameMenuKeyboard(clubID, gameID int64, userRole string, isBanker bool, game
 func gameParticipantListKeyboard(clubID, gameID int64, participants []*domain.GameParticipantWithPlayer, userRole string) tgbotapi.InlineKeyboardMarkup {
 	cid := strconv.FormatInt(clubID, 10)
 	gid := strconv.FormatInt(gameID, 10)
-	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(participants)+2)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(participants)+1)
 
 	for _, p := range participants {
 		label := p.Player.FirstName
@@ -681,12 +692,6 @@ func gameParticipantListKeyboard(clubID, gameID int64, participants []*domain.Ga
 		label += " [" + participantStatusLabel(p.Status) + "]"
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbMemberAction, cid, gid, p.PlayerID)),
-		))
-	}
-
-	if userRole == "owner" || userRole == "admin" {
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Пригласить участника", fmt.Sprintf("%s:%s:%s", cbGameInvite, cid, gid)),
 		))
 	}
 

@@ -142,7 +142,7 @@ func (b *Bot) clubSubMenu(ctx context.Context, clubID int64, tgUserID int64, cha
 		userRole = role
 	}
 	isPrivate := chatID > 0
-	return clubSubMenuKeyboard(clubID, userRole, isPrivate)
+	return clubSubMenuKeyboard(clubID, userRole, isPrivate, b.api.Self.UserName)
 }
 
 // SetupWebhook registers the webhook URL with Telegram.

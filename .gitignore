@@ -40,10 +40,11 @@ node_modules/
 # Logs
 *.log
 
-# Tasks & plans
+# Tasks & plans & test data
 /docs
 /tasks
 /plans
+/db_data
 
 # Agents
 .kilo/
