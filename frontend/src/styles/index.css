@@ -1,0 +1,158 @@
+/**
+ * Base CSS styles for the Poker Club Frontend.
+ *
+ * Design System foundation (see 05_FE_UX.md section 20–60).
+ * Uses CSS variables for theming with light/dark mode support.
+ *
+ * See 04_FE_SPEC.md section 21 (responsive design), section 691–709
+ * (Telegram theme), section 890–902 (browser compatibility).
+ */
+
+/* CSS Variables — core design tokens */
+:root {
+  --bg: #ffffff;
+  --text: #1f2937;
+  --border: #d1d5db;
+  --accent: #a855f7;
+  --accent-bg: rgba(168, 85, 247, 0.1);
+  --subtle-border: #e5e7eb;
+  --muted: #6b7280;
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+
+  --radius: 0.5rem;
+  --radius-sm: 0.375rem;
+  --radius-lg: 0.75rem;
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+}
+
+/* Base styles */
+html {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+  box-sizing: border-box;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Focus styles — keyboard navigation (04_FE_SPEC.md section 34) */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Selection colors */
+*::-moz-selection {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+::selection {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* Reduced motion (04_FE_SPEC.md section 34) */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Dark mode — Standard Web fallback (04_FE_SPEC.md section 703) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111827;
+    --text: #f9fafb;
+    --border: #374151;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --subtle-border: #374151;
+    --muted: #9ca3af;
+    --success: #34d399;
+    --error: #f87171;
+    --warning: #fbbf24;
+    --info: #60a5fa;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+}
+
+/* App root */
+.app-root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Home page */
+.home-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  padding: var(--spacing-md);
+  text-align: center;
+}
+
+.home-page h1 {
+  font-size: 2.5rem;
+  font-weight: 500;
+  margin: 0 0 var(--spacing-md);
+  color: var(--accent);
+}
+
+.home-page p {
+  margin: 0 0 var(--spacing-sm);
+  color: var(--muted);
+}
+
+.environment-info {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-bg);
+  max-width: 400px;
+  width: 100%;
+}
+
+.environment-info p {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.environment-info strong {
+  color: var(--text);
+}
