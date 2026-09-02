@@ -1,13 +1,14 @@
 /**
  * Home page component.
  *
- * Phase 0 (Foundation) — displays a minimal landing page that confirms
- * the application is running in Standard Web mode.
+ * Displays a landing page that confirms the application is running.
+ * Shows the current environment (Standard Web or Telegram Mini App).
  *
- * No business functionality is implemented at this stage.
- * See RM_FE_0.md (Frontend Foundation).
+ * See 05_FE_UX.md section 4 (Application Navigation) and
+ * 04_FE_SPEC.md section 11 (Routing).
  */
 
+import { Card, Text, Title, Stack } from '@mantine/core'
 import { useTelegramEnvironment } from '../hooks'
 
 /**
@@ -17,27 +18,40 @@ import { useTelegramEnvironment } from '../hooks'
  * - Application name
  * - Current environment (Standard Web or Telegram Mini App)
  * - Confirmation that the app is running
- *
- * This is a placeholder page for Phase 0. Business functionality
- * will be added in subsequent phases.
  */
 export function HomePage() {
   const telegramEnv = useTelegramEnvironment()
 
   return (
-    <main className="home-page">
-      <h1>Poker Club</h1>
-      <p>Frontend Foundation — Phase 0</p>
-      <div className="environment-info">
-        <p>
-          <strong>Environment:</strong>{' '}
-          {telegramEnv.isTelegram ? 'Telegram Mini App' : 'Standard Web'}
-        </p>
-        <p>
-          <strong>API Base URL:</strong>{' '}
-          {import.meta.env.VITE_API_BASE_URL || 'not configured'}
-        </p>
-      </div>
-    </main>
+    <Stack
+      align="center"
+      style={{ minHeight: '400px', justifyContent: 'center' }}
+    >
+      <Title order={1} ta="center">
+        Poker Club
+      </Title>
+      <Text c="dimmed" ta="center">
+        Application Shell — Phase 1
+      </Text>
+
+      <Card
+        shadow="sm"
+        padding="lg"
+        radius="md"
+        withBorder
+        style={{ maxWidth: '400px', width: '100%' }}
+      >
+        <Stack gap="xs">
+          <Text size="sm">
+            <strong>Environment:</strong>{' '}
+            {telegramEnv.isTelegram ? 'Telegram Mini App' : 'Standard Web'}
+          </Text>
+          <Text size="sm">
+            <strong>API Base URL:</strong>{' '}
+            {import.meta.env.VITE_API_BASE_URL || 'not configured'}
+          </Text>
+        </Stack>
+      </Card>
+    </Stack>
   )
 }

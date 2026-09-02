@@ -2,6 +2,7 @@
  * Root layout component for the application.
  *
  * Provides the application shell with:
+ * - Mantine AppShell (header + sidebar navigation)
  * - Telegram environment detection
  * - Theme application (Telegram theme or default)
  * - Safe area handling for Telegram Mini App
@@ -12,8 +13,15 @@
 
 import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
+import {
+  AppShell,
+  AppShellHeader,
+  AppShellNavbar,
+  AppShellMain,
+} from '@mantine/core'
 import { useTelegramEnvironment } from '../hooks'
 import { applyTelegramThemeVariables } from '../styles'
+import { Navigation } from './Navigation'
 
 /**
  * Root layout component.
@@ -38,8 +46,37 @@ export function RootLayout() {
   }, [telegramEnv])
 
   return (
-    <div className="app-root">
-      <Outlet />
-    </div>
+    <AppShell
+      header={{ height: 60 }}
+      navbar={{
+        width: 250,
+        breakpoint: 'sm',
+        collapsed: { mobile: true },
+      }}
+    >
+      <AppShellHeader>
+        <div
+          style={{
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 var(--mantine-spacing-md)',
+          }}
+        >
+          <span style={{ fontWeight: 500, fontSize: '1.125rem' }}>
+            Poker Club
+          </span>
+        </div>
+      </AppShellHeader>
+
+      <AppShellNavbar>
+        <Navigation />
+      </AppShellNavbar>
+
+      <AppShellMain>
+        <Outlet />
+      </AppShellMain>
+    </AppShell>
   )
 }

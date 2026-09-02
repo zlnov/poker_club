@@ -1,11 +1,11 @@
 /**
  * Base styles for the Poker Club Frontend.
  *
- * Design System foundation (see 05_FE_UX.md section 20–60).
+ * Design System foundation (see 05_FE_UX.md section 2).
  * Uses CSS variables for theming with light/dark mode support.
  *
- * See 04_FE_SPEC.md section 21 (responsive design), section 691–709
- * (Telegram theme), section 890–902 (browser compatibility).
+ * See 04_FE_SPEC.md section 21 (responsive design), section 22 (Telegram theme),
+ * section 34 (accessibility), section 890–902 (browser compatibility).
  */
 
 /**
@@ -80,8 +80,8 @@ export const zIndex = {
  * `window.Telegram.WebApp.theme` are applied.
  * In Standard Web mode, the default theme is used.
  *
- * See 04_FE_SPEC.md section 703 (Standard Web fallback theme).
- * See 05_FE_UX.md section 412–429 (Telegram theme).
+ * See 04_FE_SPEC.md section 22 (Telegram Theme) and
+ * 05_FE_UX.md section 18 (Telegram Theme).
  */
 export function applyTelegramThemeVariables(theme?: {
   bgColor: string

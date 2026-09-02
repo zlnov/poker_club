@@ -1,11 +1,11 @@
 /**
  * Base CSS styles for the Poker Club Frontend.
  *
- * Design System foundation (see 05_FE_UX.md section 20–60).
+ * Design System foundation (see 05_FE_UX.md section 2).
  * Uses CSS variables for theming with light/dark mode support.
  *
- * See 04_FE_SPEC.md section 21 (responsive design), section 691–709
- * (Telegram theme), section 890–902 (browser compatibility).
+ * See 04_FE_SPEC.md section 21 (responsive design), section 22 (Telegram theme),
+ * section 34 (accessibility), section 890–902 (browser compatibility).
  */
 
 /* CSS Variables — core design tokens */
@@ -85,16 +85,16 @@ body {
   }
 }
 
-/* Dark mode — Standard Web fallback (04_FE_SPEC.md section 703) */
+/* Dark mode — Standard Web fallback (04_FE_SPEC.md section 22) */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #111827;
-    --text: #f9fafb;
-    --border: #374151;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --subtle-border: #374151;
-    --muted: #9ca3af;
+    --bg: #0a0a0f;
+    --text: #ffffff;
+    --border: #2a2a3a;
+    --accent: #8b5cf6;
+    --accent-bg: rgba(139, 92, 246, 0.12);
+    --subtle-border: #2a2a3a;
+    --muted: #8a8a9a;
     --success: #34d399;
     --error: #f87171;
     --warning: #fbbf24;
@@ -115,44 +115,8 @@ body {
   color: var(--text);
 }
 
-/* Home page */
-.home-page {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100svh;
+/* Page content wrapper */
+.page-content {
+  flex: 1;
   padding: var(--spacing-md);
-  text-align: center;
-}
-
-.home-page h1 {
-  font-size: 2.5rem;
-  font-weight: 500;
-  margin: 0 0 var(--spacing-md);
-  color: var(--accent);
-}
-
-.home-page p {
-  margin: 0 0 var(--spacing-sm);
-  color: var(--muted);
-}
-
-.environment-info {
-  margin-top: var(--spacing-md);
-  padding: var(--spacing-md);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--accent-bg);
-  max-width: 400px;
-  width: 100%;
-}
-
-.environment-info p {
-  margin: 0.25rem 0;
-  font-size: 0.9rem;
-}
-
-.environment-info strong {
-  color: var(--text);
 }
