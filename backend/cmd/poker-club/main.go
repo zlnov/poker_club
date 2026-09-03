@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"poker-club/backend/internal/auth"
 	"poker-club/backend/internal/config"
 	"poker-club/backend/internal/repository/postgres"
 	"poker-club/backend/internal/service"
@@ -50,8 +51,18 @@ func run() error {
 	// Create service
 	svc := service.New(repos, log)
 
+	// Create JWT manager and auth use case
+	jwtManager := auth.NewJWTManager(
+		cfg.JWTSecret,
+		cfg.JWTIssuer,
+		cfg.JWTAudience,
+		70*time.Hour,   // access token lifetime per 07.1_AUTH_SECURITY.md
+		15*24*time.Hour, // refresh token lifetime: 15 days per 07.1_AUTH_SECURITY.md
+	)
+	authUC := auth.NewAuthUseCase(repos, jwtManager, cfg.BotToken, log)
+
 	// Create HTTP server
-	httpServer := transporthttp.NewServer(cfg, svc)
+	httpServer := transporthttp.NewServer(cfg, svc, jwtManager, authUC)
 
 	// Create Telegram bot (optional — app can run without a valid token)
 	var bot *telegram.Bot

@@ -148,3 +148,29 @@ type ClubStatistics struct {
 	TotalBank           float64
 	AverageGameDuration time.Duration
 }
+
+// AuthenticatedUser represents the identity of an authenticated user,
+// extracted from a valid JWT. This is the authentication context that
+// is passed through the request lifecycle.
+type AuthenticatedUser struct {
+	PlayerID int64
+	TgUserID *int64
+	Role     string
+}
+
+// RefreshToken represents a refresh token stored in the database.
+// Only the hash of the token is stored, never the raw token.
+type RefreshToken struct {
+	ID        int64
+	PlayerID  int64
+	TokenHash string
+	ExpiresAt time.Time
+	CreatedAt time.Time
+	RevokedAt *time.Time
+}
+
+// AuthTokens represents the pair of tokens issued after successful authentication.
+type AuthTokens struct {
+	AccessToken  string
+	RefreshToken string
+}

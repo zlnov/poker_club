@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"poker-club/backend/internal/auth"
 	"poker-club/backend/internal/config"
 	"poker-club/backend/internal/service"
 )
@@ -19,7 +20,7 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server with routes and middleware configured.
-func NewServer(cfg *config.Config, svc *service.Service) *Server {
+func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, authUC *auth.AuthUseCase) *Server {
 	// Disable debug mode in production
 	gin.SetMode(gin.ReleaseMode)
 
@@ -37,6 +38,23 @@ func NewServer(cfg *config.Config, svc *service.Service) *Server {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Authentication routes (public)
+	authHandler := NewAuthHandler(authUC)
+	authRoutes := router.Group("/api/v1/auth")
+	{
+		authRoutes.POST("/login", authHandler.Login)
+		authRoutes.POST("/telegram", authHandler.TelegramAuth)
+		authRoutes.POST("/refresh", authHandler.Refresh)
+		authRoutes.POST("/logout", authHandler.Logout)
+	}
+
+	// Protected routes (require JWT authentication)
+	protected := router.Group("/api/v1")
+	protected.Use(AuthMiddleware(jwt))
+	{
+		protected.GET("/me", authHandler.Me)
+	}
 
 	// Webhook endpoint — registered by transport layer via RegisterWebhookHandler
 

@@ -91,6 +91,16 @@ type PlayerStatisticsRepository interface {
 	Upsert(ctx context.Context, stats *PlayerStatistics) error
 }
 
+// RefreshTokenRepository defines operations for refresh token persistence.
+type RefreshTokenRepository interface {
+	Ping(ctx context.Context) error
+	Create(ctx context.Context, token *RefreshToken) (int64, error)
+	GetByTokenHash(ctx context.Context, tokenHash string) (*RefreshToken, error)
+	Revoke(ctx context.Context, tokenHash string) error
+	RevokeByPlayer(ctx context.Context, playerID int64) error
+	DeleteExpired(ctx context.Context) error
+}
+
 // Repositories groups all repository interfaces.
 type Repositories struct {
 	Clubs            ClubRepository
@@ -100,4 +110,5 @@ type Repositories struct {
 	GameParticipants GameParticipantRepository
 	Events           EventRepository
 	PlayerStatistics PlayerStatisticsRepository
+	RefreshTokens    RefreshTokenRepository
 }

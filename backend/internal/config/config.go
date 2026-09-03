@@ -19,6 +19,9 @@ type Config struct {
 	WebhookPort string
 	LongPolling bool
 	LogLevel    string
+	JWTSecret   string
+	JWTIssuer   string
+	JWTAudience string
 }
 
 // Load reads configuration from environment variables and returns a Config.
@@ -35,6 +38,9 @@ func Load() *Config {
 		WebhookPort: getEnv("WEBHOOK_PORT", "8080"),
 		LongPolling: getEnvBool("LONG_POLLING", true),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		JWTSecret:   os.Getenv("JWT_SECRET"),
+		JWTIssuer:   getEnv("JWT_ISSUER", "poker-club"),
+		JWTAudience: getEnv("JWT_AUDIENCE", "poker-club-web"),
 	}
 }
 

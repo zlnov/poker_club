@@ -1097,5 +1097,79 @@ func NewRepositories(db *DB) *domain.Repositories {
 		GameParticipants: &gameParticipantRepository{db: db},
 		Events:           &eventRepository{db: db},
 		PlayerStatistics: &playerStatisticsRepository{db: db},
+		RefreshTokens:    &refreshTokenRepository{db: db},
 	}
+}
+
+// refreshTokenRepository implements domain.RefreshTokenRepository.
+type refreshTokenRepository struct {
+	db *DB
+}
+
+func (r *refreshTokenRepository) Ping(ctx context.Context) error {
+	return r.db.Ping(ctx)
+}
+
+func (r *refreshTokenRepository) Create(ctx context.Context, token *domain.RefreshToken) (int64, error) {
+	query := `
+		INSERT INTO refresh_tokens (player_id, token_hash, expires_at, created_at, revoked_at)
+		VALUES ($1, $2, $3, NOW(), NULL)
+		RETURNING id
+	`
+	var id int64
+	err := r.db.Pool.QueryRow(ctx, query,
+		token.PlayerID, token.TokenHash, token.ExpiresAt,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create refresh token: %w", err)
+	}
+	return id, nil
+}
+
+func (r *refreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.RefreshToken, error) {
+	query := `
+		SELECT id, player_id, token_hash, expires_at, created_at, revoked_at
+		FROM refresh_tokens WHERE token_hash = $1
+	`
+	var t domain.RefreshToken
+	err := r.db.Pool.QueryRow(ctx, query, tokenHash).Scan(
+		&t.ID, &t.PlayerID, &t.TokenHash, &t.ExpiresAt, &t.CreatedAt, &t.RevokedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("refresh token not found")
+		}
+		return nil, fmt.Errorf("failed to get refresh token: %w", err)
+	}
+	return &t, nil
+}
+
+func (r *refreshTokenRepository) Revoke(ctx context.Context, tokenHash string) error {
+	query := `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL`
+	tag, err := r.db.Pool.Exec(ctx, query, tokenHash)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh token: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("refresh token not found or already revoked")
+	}
+	return nil
+}
+
+func (r *refreshTokenRepository) RevokeByPlayer(ctx context.Context, playerID int64) error {
+	query := `UPDATE refresh_tokens SET revoked_at = NOW() WHERE player_id = $1 AND revoked_at IS NULL`
+	_, err := r.db.Pool.Exec(ctx, query, playerID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh tokens for player: %w", err)
+	}
+	return nil
+}
+
+func (r *refreshTokenRepository) DeleteExpired(ctx context.Context) error {
+	query := `DELETE FROM refresh_tokens WHERE expires_at < NOW()`
+	_, err := r.db.Pool.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to delete expired refresh tokens: %w", err)
+	}
+	return nil
 }
