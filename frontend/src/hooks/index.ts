@@ -8,14 +8,15 @@
  * section 6 (Telegram Integration Layer).
  */
 
-import { useMemo } from 'react'
+import { useMemo, useContext } from 'react'
 import { getEnvironment, type EnvironmentConfig } from '../env'
-import { createApiClient, type ApiClient } from '../api'
+import type { ApiClient } from '../api'
 import {
   createTelegramEnvironment,
   getTelegramWebApp,
   type TelegramEnvironmentInfo,
 } from '../telegram'
+import { ApiClientContext } from '../auth/ApiClientContext'
 
 /**
  * Hook that provides the current environment configuration.
@@ -30,12 +31,17 @@ export function useEnvironment(): EnvironmentConfig {
 /**
  * Hook that provides the API client instance.
  *
- * Creates a singleton ApiClient from the environment configuration.
- * The client is memoized so it persists across re-renders.
+ * Returns the application-wide singleton ApiClient that is configured
+ * with the current token manager for JWT Bearer authentication.
+ *
+ * See 06_API.md section 4 (API Client) and 07_AUTH.md section 5 (JWT).
  */
 export function useApiClient(): ApiClient {
-  const env = useEnvironment()
-  return useMemo(() => createApiClient(env.apiBaseUrl), [env.apiBaseUrl])
+  const client = useContext(ApiClientContext)
+  if (!client) {
+    throw new Error('useApiClient must be used within an AuthProvider')
+  }
+  return client
 }
 
 /**

@@ -5,6 +5,7 @@
  *
  * Routing structure from 05_FE_UX.md section 5:
  *   /
+ *   ├── /login
  *   ├── /clubs
  *   ├── /clubs/:clubId
  *   ├── /clubs/:clubId/members
@@ -20,6 +21,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 import {
   HomePage,
+  LoginPage,
   ClubsPage,
   ClubDashboard,
   ClubGames,
@@ -29,21 +31,27 @@ import {
   GamePage,
   ProfilePage,
 } from '../pages'
-import { RootLayout, ClubLayout } from '../components'
+import {
+  RootLayout,
+  ClubLayout,
+  ProtectedRoute,
+  PublicRoute,
+} from '../components'
 
 /**
  * Application routes.
  *
  * Route structure:
  * - / (root) — Home page (wrapped in RootLayout)
- * - /clubs — Club list
- * - /clubs/:clubId — Club dashboard (wrapped in ClubLayout with tabs)
- *   - /clubs/:clubId/members — Club members
- *   - /clubs/:clubId/games — Club games
- *   - /clubs/:clubId/statistics — Club statistics
- *   - /clubs/:clubId/settings — Club settings
- * - /games/:gameId — Game details
- * - /profile — User profile
+ * - /login — Login page (public route, redirects if authenticated)
+ * - /clubs — Club list (protected)
+ * - /clubs/:clubId — Club dashboard (wrapped in ClubLayout with tabs, protected)
+ *   - /clubs/:clubId/members — Club members (protected)
+ *   - /clubs/:clubId/games — Club games (protected)
+ *   - /clubs/:clubId/statistics — Club statistics (protected)
+ *   - /clubs/:clubId/settings — Club settings (protected)
+ * - /games/:gameId — Game details (protected)
+ * - /profile — User profile (protected)
  */
 export const router = createBrowserRouter([
   {
@@ -55,42 +63,70 @@ export const router = createBrowserRouter([
         element: <HomePage />,
       },
       {
-        path: 'clubs',
-        element: <ClubsPage />,
-      },
-      {
-        path: 'clubs/:clubId',
-        element: <ClubLayout />,
+        path: 'login',
+        element: <PublicRoute />,
         children: [
           {
             index: true,
-            element: <ClubDashboard />,
+            element: <LoginPage />,
+          },
+        ],
+      },
+      {
+        path: 'clubs',
+        element: <ProtectedRoute />,
+        children: [
+          {
+            index: true,
+            element: <ClubsPage />,
           },
           {
-            path: 'games',
-            element: <ClubGames />,
-          },
-          {
-            path: 'members',
-            element: <ClubMembers />,
-          },
-          {
-            path: 'statistics',
-            element: <ClubStatistics />,
-          },
-          {
-            path: 'settings',
-            element: <ClubSettings />,
+            path: ':clubId',
+            element: <ClubLayout />,
+            children: [
+              {
+                index: true,
+                element: <ClubDashboard />,
+              },
+              {
+                path: 'games',
+                element: <ClubGames />,
+              },
+              {
+                path: 'members',
+                element: <ClubMembers />,
+              },
+              {
+                path: 'statistics',
+                element: <ClubStatistics />,
+              },
+              {
+                path: 'settings',
+                element: <ClubSettings />,
+              },
+            ],
           },
         ],
       },
       {
         path: 'games/:gameId',
-        element: <GamePage />,
+        element: <ProtectedRoute />,
+        children: [
+          {
+            index: true,
+            element: <GamePage />,
+          },
+        ],
       },
       {
         path: 'profile',
-        element: <ProfilePage />,
+        element: <ProtectedRoute />,
+        children: [
+          {
+            index: true,
+            element: <ProfilePage />,
+          },
+        ],
       },
     ],
   },

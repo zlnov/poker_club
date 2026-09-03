@@ -11,6 +11,7 @@ export type {
   ApiRequestOptions,
   ApiResponse,
   HttpMethod,
+  TokenManager,
 } from './client'
 export { ApiClientError, parseApiError } from './errors'
 export type { ApiError, ApiErrorCode, ApiErrorResponse } from './errors'

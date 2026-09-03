@@ -5,37 +5,19 @@
  * - MantineProvider (Design System + theme)
  * - QueryClientProvider (TanStack Query for server state)
  * - Notifications (Mantine notifications for toasts)
+ * - AuthProvider (authentication state)
  *
  * See 04_FE_SPEC.md section 9 (Frontend Architecture) and
  * section 15 (Server State).
  */
 
 import { Notifications } from '@mantine/notifications'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode, useMemo } from 'react'
 import { MantineProvider } from '@mantine/core'
 import { pokerClubTheme } from '../styles/theme'
-
-/**
- * Singleton QueryClient instance.
- *
- * Configured with sensible defaults for the Poker Club Frontend.
- * See 04_FE_SPEC.md section 15 (Server State).
- */
-export function createQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 30_000,
-        retry: 1,
-        refetchOnWindowFocus: true,
-      },
-      mutations: {
-        retry: false,
-      },
-    },
-  })
-}
+import { AuthProvider } from '../auth'
+import { createQueryClient } from './queryClient'
 
 export interface AppProvidersProps {
   children: ReactNode
@@ -68,7 +50,7 @@ export function AppProviders({ children }: AppProvidersProps) {
           limit={5}
           autoClose={5000}
         />
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </MantineProvider>
     </QueryClientProvider>
   )

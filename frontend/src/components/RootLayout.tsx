@@ -22,15 +22,19 @@ import {
 import { useTelegramEnvironment } from '../hooks'
 import { applyTelegramThemeVariables } from '../styles'
 import { Navigation } from './Navigation'
+import { useTelegramAuth } from '../auth/useTelegramAuth'
 
 /**
  * Root layout component.
  *
  * Wraps all child routes with the application shell.
  * Handles Telegram environment initialization and theme application.
+ * Telegram authentication is handled by useTelegramAuth hook.
  */
 export function RootLayout() {
   const telegramEnv = useTelegramEnvironment()
+  // Initialize Telegram authentication (hook handles deduplication)
+  useTelegramAuth()
 
   useEffect(() => {
     // Apply Telegram theme if available, otherwise use default theme

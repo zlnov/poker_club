@@ -5,4 +5,5 @@
  */
 
 export { router } from './router'
-export { AppProviders, createQueryClient } from './providers'
+export { AppProviders } from './providers'
+export { createQueryClient } from './queryClient'

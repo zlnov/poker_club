@@ -5,9 +5,13 @@
  * Components must not call fetch() directly — they use feature hooks
  * which in turn use this client (see 04_FE_SPEC.md section 14).
  *
- * Session management is cookie-based (HTTP-only, Secure, SameSite).
- * The client sends credentials automatically so the Backend session cookie
- * is included on every request (see 07_AUTH.md section 5).
+ * Authentication uses JWT Bearer tokens (07_AUTH.md, 07.1_AUTH_SECURITY.md).
+ * Access tokens are stored in runtime memory only — never in localStorage/sessionStorage.
+ * The client adds `Authorization: Bearer <access_token>` to protected requests.
+ *
+ * Token refresh is handled automatically: when a request returns 401,
+ * the client attempts to refresh the access token using the refresh token.
+ * The original request is retried once after a successful refresh.
  */
 
 import { parseApiError } from './errors'
@@ -25,6 +29,8 @@ export interface ApiRequestOptions {
   headers?: Record<string, string>
   body?: unknown
   query?: Record<string, string | number | boolean | undefined>
+  /** Skip auth header for this request (e.g., login, refresh). */
+  skipAuth?: boolean
 }
 
 /**
@@ -36,25 +42,49 @@ export interface ApiResponse<T = unknown> {
 }
 
 /**
+ * Token manager interface.
+ * Provides access to the current access token and handles refresh.
+ */
+export interface TokenManager {
+  /** Returns the current access token, or null if not available. */
+  getAccessToken(): string | null
+  /** Returns the current refresh token, or null if not available. */
+  getRefreshToken(): string | null
+  /** Sets new tokens after login or refresh. */
+  setTokens(accessToken: string, refreshToken: string): void
+  /** Clears all tokens (logout). */
+  clearTokens(): void
+  /** Refreshes the access token using the refresh token. Returns new tokens or null on failure. */
+  refreshAccessToken(): Promise<{
+    accessToken: string
+    refreshToken: string
+  } | null>
+}
+
+/**
  * Configuration for the API client.
  */
 export interface ApiClientConfig {
   /** Base URL for the API (includes /api/v1 prefix). */
   baseUrl: string
+  /** Token manager for JWT token handling. */
+  tokenManager: TokenManager
 }
 
 /**
  * Centralized API client for all Backend communication.
  *
  * Usage:
- *   const client = new ApiClient({ baseUrl: 'http://localhost:8080/api/v1' })
+ *   const client = new ApiClient({ baseUrl: 'http://localhost:8080/api/v1', tokenManager })
  *   const response = await client.request('/clubs', { method: 'GET' })
  */
 export class ApiClient {
   private readonly baseUrl: string
+  private readonly tokenManager: TokenManager
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '') // strip trailing slash
+    this.tokenManager = config.tokenManager
   }
 
   /**
@@ -86,9 +116,30 @@ export class ApiClient {
   }
 
   /**
+   * Builds headers for the request, including Authorization if available.
+   */
+  private buildHeaders(options: ApiRequestOptions): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    }
+
+    // Add Authorization header if not skipped and token is available
+    if (!options.skipAuth) {
+      const token = this.tokenManager.getAccessToken()
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+    }
+
+    return headers
+  }
+
+  /**
    * Performs an HTTP request to the Backend API.
    *
-   * - Automatically includes credentials (cookies) for session-based auth.
+   * - Adds Authorization: Bearer <access_token> to protected requests.
+   * - On 401, attempts token refresh and retries once.
    * - Parses JSON responses.
    * - Throws ApiClientError for non-2xx responses.
    */
@@ -96,18 +147,15 @@ export class ApiClient {
     path: string,
     options: ApiRequestOptions = {},
   ): Promise<ApiResponse<T>> {
-    const { method = 'GET', headers = {}, body, query } = options
+    const { method = 'GET', body, query, skipAuth = false } = options
 
     const url = this.buildUrl(path, query)
+    const headers = this.buildHeaders(options)
 
     const response = await fetch(url, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
+      headers,
       body: this.serializeBody(body),
-      credentials: 'include', // send HTTP-only session cookie
     })
 
     const status = response.status
@@ -120,6 +168,36 @@ export class ApiClient {
     }
 
     if (!response.ok) {
+      // Handle 401: attempt token refresh and retry once
+      if (status === 401 && !skipAuth) {
+        const refreshed = await this.tokenManager.refreshAccessToken()
+        if (refreshed) {
+          // Retry the original request with new token
+          const newHeaders = this.buildHeaders({ ...options, skipAuth: false })
+          const retryResponse = await fetch(url, {
+            method,
+            headers: newHeaders,
+            body: this.serializeBody(body),
+          })
+
+          const retryStatus = retryResponse.status
+          let retryBody: unknown
+          const retryContentType = retryResponse.headers.get('content-type')
+          if (retryContentType?.includes('application/json')) {
+            retryBody = await retryResponse.json().catch(() => null)
+          }
+
+          if (!retryResponse.ok) {
+            throw parseApiError(retryBody, retryStatus)
+          }
+
+          return {
+            data: retryBody as T,
+            status: retryStatus,
+          }
+        }
+      }
+
       throw parseApiError(responseBody, status)
     }
 
@@ -174,6 +252,9 @@ export class ApiClient {
  * Creates a singleton ApiClient instance from environment configuration.
  * The client is created once and reused across the application.
  */
-export function createApiClient(baseUrl: string): ApiClient {
-  return new ApiClient({ baseUrl })
+export function createApiClient(
+  baseUrl: string,
+  tokenManager: TokenManager,
+): ApiClient {
+  return new ApiClient({ baseUrl, tokenManager })
 }
