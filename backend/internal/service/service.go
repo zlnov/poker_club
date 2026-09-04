@@ -735,6 +735,17 @@ func (s *Service) GetGame(ctx context.Context, tgUserID int64, clubID int64, gam
 	return game, nil
 }
 
+// GetGameByID returns a game by ID, resolving the club ID internally for permission checking.
+// This is used by the HTTP API where only the game ID is known.
+func (s *Service) GetGameByID(ctx context.Context, tgUserID int64, gameID int64) (*domain.Game, error) {
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetGame(ctx, tgUserID, game.ClubID, gameID)
+}
+
 // GetClubGames returns all games for a club.
 func (s *Service) GetClubGames(ctx context.Context, tgUserID int64, clubID int64) ([]*domain.Game, error) {
 	if err := s.CheckPermission(ctx, tgUserID, clubID, PermViewClub); err != nil {
@@ -776,6 +787,44 @@ func (s *Service) UpdateGame(ctx context.Context, tgUserID int64, clubID int64, 
 	s.log.Info("game parameters updated",
 		"game_id", gameID,
 		"club_id", clubID,
+		"tg_user_id", tgUserID,
+	)
+
+	return game, nil
+}
+
+// ChangeBanker assigns or changes the banker for a game.
+// The requesting user must be the owner or admin.
+// The new banker must be an active club member.
+func (s *Service) ChangeBanker(ctx context.Context, tgUserID int64, clubID int64, gameID int64, bankerPlayerID int64) (*domain.Game, error) {
+	if err := s.CheckPermission(ctx, tgUserID, clubID, PermEditGame); err != nil {
+		return nil, err
+	}
+
+	game, err := s.repos.Games.GetByID(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	if game.ClubID != clubID {
+		return nil, errors.New("игра не принадлежит этому клубу")
+	}
+
+	// Verify the new banker is an active club member.
+	bankerMember, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, bankerPlayerID)
+	if err != nil {
+		return nil, errors.New("банкир не является участником клуба")
+	}
+
+	game.BankerID = bankerMember.ID
+	if err := s.repos.Games.Update(ctx, game); err != nil {
+		return nil, fmt.Errorf("failed to update game banker: %w", err)
+	}
+
+	s.log.Info("game banker changed",
+		"game_id", gameID,
+		"club_id", clubID,
+		"new_banker_id", bankerMember.ID,
 		"tg_user_id", tgUserID,
 	)
 
@@ -1282,6 +1331,52 @@ func (s *Service) RegisterRebuy(ctx context.Context, tgUserID int64, clubID int6
 		"game_id", gameID,
 		"player_id", playerID,
 		"rebuy_count", newRebuyCount,
+		"tg_user_id", tgUserID,
+	)
+
+	return nil
+}
+
+// RegisterBuyIn registers a buy-in for a player in an active game.
+// Only the banker, owner, or admin can perform this action.
+// Buy-in is only allowed if the game is active.
+func (s *Service) RegisterBuyIn(ctx context.Context, tgUserID int64, clubID int64, gameID int64, playerID int64) error {
+	game, member, err := s.checkGameAccess(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return err
+	}
+
+	if game.Status != "active" {
+		return errors.New("регистрация buy-in доступна только для активных игр")
+	}
+
+	participant, err := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
+	if err != nil {
+		return errors.New("игрок не является участником игры")
+	}
+
+	newBuyInCount := participant.BuyInCount + 1
+	if err := s.repos.GameParticipants.RegisterBuyIn(ctx, gameID, playerID, newBuyInCount); err != nil {
+		return fmt.Errorf("failed to register buy-in: %w", err)
+	}
+
+	// Record buy-in event.
+	buyInAmount := game.BuyInAmount
+	event := &domain.Event{
+		GameID:    gameID,
+		PlayerID:  playerID,
+		Type:      "buy_in",
+		NewValue:  &buyInAmount,
+		CreatedBy: member.ID,
+	}
+	if _, err := s.repos.Events.Create(ctx, event); err != nil {
+		s.log.Warn("failed to create buy-in event", "error", err)
+	}
+
+	s.log.Info("buy-in registered",
+		"game_id", gameID,
+		"player_id", playerID,
+		"buy_in_count", newBuyInCount,
 		"tg_user_id", tgUserID,
 	)
 
@@ -2368,23 +2463,31 @@ func (s *Service) RecalculatePlayerStatistics(ctx context.Context, clubID int64)
 
 // GetPlayerStatistics returns the cached aggregate statistics for a player
 // in a club, augmented with derived metrics calculated at read time.
+// The requesting user is identified by their Telegram user ID.
 func (s *Service) GetPlayerStatistics(ctx context.Context, tgUserID int64, clubID int64) (*domain.PlayerStatisticsView, error) {
 	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	stats, err := s.repos.PlayerStatistics.GetByPlayerAndClub(ctx, player.ID, clubID)
+	return s.GetPlayerStatisticsByID(ctx, player.ID, clubID)
+}
+
+// GetPlayerStatisticsByID returns the cached aggregate statistics for a player
+// (identified by database ID) in a club, augmented with derived metrics
+// calculated at read time.
+func (s *Service) GetPlayerStatisticsByID(ctx context.Context, playerID int64, clubID int64) (*domain.PlayerStatisticsView, error) {
+	stats, err := s.repos.PlayerStatistics.GetByPlayerAndClub(ctx, playerID, clubID)
 	if err != nil {
 		// No cached statistics — return a zero-value view with derived metrics.
 		stats = &domain.PlayerStatistics{
-			PlayerID: player.ID,
+			PlayerID: playerID,
 			ClubID:   clubID,
 		}
 	}
 
 	// Calculate derived metrics at read time from game_participants.
-	totalBuyInCount, avgPlace, err := s.repos.GameParticipants.GetPlayerFinishedStats(ctx, player.ID, clubID)
+	totalBuyInCount, avgPlace, err := s.repos.GameParticipants.GetPlayerFinishedStats(ctx, playerID, clubID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get player finished stats: %w", err)
 	}
