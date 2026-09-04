@@ -8,35 +8,6 @@
  * section 34 (accessibility), section 890–902 (browser compatibility).
  */
 
-/**
- * CSS Variables — core design tokens.
- * Themable via the `data-theme` attribute and Telegram theme parameters.
- */
-export const cssVariables = {
-  /** Background color. */
-  bg: '#ffffff',
-  /** Text color. */
-  text: '#1f2937',
-  /** Border color. */
-  border: '#d1d5db',
-  /** Accent color (primary action). */
-  accent: '#a855f7',
-  /** Accent background (subtle). */
-  accentBg: 'rgba(168, 85, 247, 0.1)',
-  /** Subtle border. */
-  subtleBorder: '#e5e7eb',
-  /** Muted text. */
-  muted: '#6b7280',
-  /** Success color. */
-  success: '#10b981',
-  /** Error color. */
-  error: '#ef4444',
-  /** Warning color. */
-  warning: '#f59e0b',
-  /** Info color. */
-  info: '#3b82f6',
-}
-
 /** Responsive breakpoints based on 05_FE_UX.md section 431–451. */
 export const breakpoints = {
   /** Mobile (primary priority, 05_FE_UX.md section 436). */
@@ -90,11 +61,8 @@ export function applyTelegramThemeVariables(theme?: {
   const html = document.documentElement
 
   if (theme) {
-    html.style.setProperty('--bg', theme.bgColor)
-    html.style.setProperty('--text', theme.textColor)
-  } else {
-    // Standard Web — use default theme
-    html.style.setProperty('--bg', cssVariables.bg)
-    html.style.setProperty('--text', cssVariables.text)
+    html.style.setProperty('--mantine-color-body', theme.bgColor)
+    html.style.setProperty('--mantine-color-text', theme.textColor)
   }
+  // Standard Web mode — Mantine handles light/dark via colorScheme
 }

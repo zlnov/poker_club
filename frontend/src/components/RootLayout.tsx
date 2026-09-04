@@ -18,10 +18,13 @@ import {
   AppShellHeader,
   AppShellNavbar,
   AppShellMain,
+  Group,
+  Title,
 } from '@mantine/core'
 import { useTelegramEnvironment } from '../hooks'
 import { applyTelegramThemeVariables } from '../styles'
 import { Navigation } from './Navigation'
+import { ThemeToggle } from './ThemeToggle'
 import { useTelegramAuth } from '../auth/useTelegramAuth'
 
 /**
@@ -51,27 +54,21 @@ export function RootLayout() {
 
   return (
     <AppShell
-      header={{ height: 60 }}
+      header={{ height: 64 }}
       navbar={{
-        width: 250,
+        width: 260,
         breakpoint: 'sm',
         collapsed: { mobile: true },
       }}
+      padding={0}
     >
       <AppShellHeader>
-        <div
-          style={{
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 var(--mantine-spacing-md)',
-          }}
-        >
-          <span style={{ fontWeight: 500, fontSize: '1.125rem' }}>
+        <Group h="100%" px="md" justify="space-between" align="center">
+          <Title order={3} fw={600}>
             Poker Club
-          </span>
-        </div>
+          </Title>
+          <ThemeToggle />
+        </Group>
       </AppShellHeader>
 
       <AppShellNavbar>

@@ -8,7 +8,7 @@
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Center, Text, Title } from '@mantine/core'
+import { PageContainer, PageHeader, EmptyState } from '../components/ui'
 
 /**
  * Clubs page.
@@ -18,13 +18,13 @@ import { Center, Text, Title } from '@mantine/core'
  */
 export function ClubsPage() {
   return (
-    <Center style={{ minHeight: '400px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <Title order={2} mb="sm">
-          Clubs
-        </Title>
-        <Text c="dimmed">Club list will be implemented in a future phase.</Text>
-      </div>
-    </Center>
+    <PageContainer>
+      <PageHeader title="Clubs" description="Your poker clubs" />
+
+      <EmptyState
+        title="No clubs yet"
+        description="You haven't joined or created any clubs. Club management will be available in a future phase."
+      />
+    </PageContainer>
   )
 }

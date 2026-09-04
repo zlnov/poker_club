@@ -8,7 +8,7 @@
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Center, Text, Title } from '@mantine/core'
+import { EmptyState } from '../components/ui'
 
 /**
  * Club dashboard page.
@@ -18,15 +18,9 @@ import { Center, Text, Title } from '@mantine/core'
  */
 export function ClubDashboard() {
   return (
-    <Center style={{ minHeight: '400px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <Title order={2} mb="sm">
-          Club Dashboard
-        </Title>
-        <Text c="dimmed">
-          Club dashboard will be implemented in a future phase.
-        </Text>
-      </div>
-    </Center>
+    <EmptyState
+      title="Club Dashboard"
+      description="Club dashboard will be implemented in a future phase."
+    />
   )
 }

@@ -8,7 +8,7 @@
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Center, Text, Title } from '@mantine/core'
+import { PageContainer, PageHeader, EmptyState } from '../components/ui'
 
 /**
  * Profile page.
@@ -18,15 +18,13 @@ import { Center, Text, Title } from '@mantine/core'
  */
 export function ProfilePage() {
   return (
-    <Center style={{ minHeight: '400px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <Title order={2} mb="sm">
-          Profile
-        </Title>
-        <Text c="dimmed">
-          User profile will be implemented in a future phase.
-        </Text>
-      </div>
-    </Center>
+    <PageContainer>
+      <PageHeader title="Profile" description="Your account information" />
+
+      <EmptyState
+        title="Profile not configured"
+        description="User profile management will be available in a future phase."
+      />
+    </PageContainer>
   )
 }

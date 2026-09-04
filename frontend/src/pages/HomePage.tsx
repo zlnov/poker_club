@@ -8,8 +8,10 @@
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Card, Text, Title, Stack } from '@mantine/core'
+import { Card, Text, Title, Stack, Group } from '@mantine/core'
+import { IconChessKing, IconWorld } from '@tabler/icons-react'
 import { useTelegramEnvironment } from '../hooks'
+import { PageContainer, PageHeader } from '../components/ui'
 
 /**
  * Home page.
@@ -23,35 +25,36 @@ export function HomePage() {
   const telegramEnv = useTelegramEnvironment()
 
   return (
-    <Stack
-      align="center"
-      style={{ minHeight: '400px', justifyContent: 'center' }}
-    >
-      <Title order={1} ta="center">
-        Poker Club
-      </Title>
-      <Text c="dimmed" ta="center">
-        Application Shell — Phase 1
-      </Text>
+    <PageContainer>
+      <PageHeader
+        title="Poker Club"
+        description="Manage your poker clubs, games, and statistics"
+      />
 
-      <Card
-        shadow="sm"
-        padding="lg"
-        radius="md"
-        withBorder
-        style={{ maxWidth: '400px', width: '100%' }}
-      >
-        <Stack gap="xs">
-          <Text size="sm">
-            <strong>Environment:</strong>{' '}
-            {telegramEnv.isTelegram ? 'Telegram Mini App' : 'Standard Web'}
-          </Text>
-          <Text size="sm">
-            <strong>API Base URL:</strong>{' '}
-            {import.meta.env.VITE_API_BASE_URL || 'not configured'}
-          </Text>
+      <Card mt="lg">
+        <Stack gap="md">
+          <Group gap="sm">
+            <IconChessKing size={24} />
+            <Title order={4} mb={0}>
+              Application
+            </Title>
+          </Group>
+
+          <Stack gap="xs">
+            <Group gap="sm">
+              <IconWorld size={16} />
+              <Text size="sm">
+                <strong>Environment:</strong>{' '}
+                {telegramEnv.isTelegram ? 'Telegram Mini App' : 'Standard Web'}
+              </Text>
+            </Group>
+            <Text size="sm">
+              <strong>API Base URL:</strong>{' '}
+              {import.meta.env.VITE_API_BASE_URL || 'not configured'}
+            </Text>
+          </Stack>
         </Stack>
       </Card>
-    </Stack>
+    </PageContainer>
   )
 }

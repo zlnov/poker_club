@@ -12,15 +12,17 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Button,
-  Card,
   Stack,
   TextInput,
   Title,
   Text,
   Alert,
   Group,
+  Center,
+  Paper,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
+import { IconInfoCircle, IconLock, IconUser } from '@tabler/icons-react'
 import { useAuth } from '../auth'
 import { useTelegramEnvironment } from '../hooks'
 import { ApiClientError } from '../api'
@@ -87,67 +89,73 @@ export function LoginPage() {
   // In Telegram Mini App mode, show a different UI
   if (telegramEnv.isTelegram) {
     return (
-      <Stack
-        align="center"
-        style={{ minHeight: '400px', justifyContent: 'center' }}
-      >
-        <Title order={1} ta="center">
-          Poker Club
-        </Title>
-        <Text c="dimmed" ta="center">
-          Telegram Mini App Mode
-        </Text>
-
-        <Card
-          shadow="sm"
-          padding="lg"
+      <Center style={{ minHeight: '100vh' }}>
+        <Paper
+          shadow="md"
           radius="md"
+          p="xl"
           withBorder
           style={{ maxWidth: '400px', width: '100%' }}
         >
-          <Stack gap="md">
-            <Text ta="center" size="lg" fw={500}>
-              Authentication via Telegram
+          <Stack gap="md" align="center">
+            <Title order={1} ta="center">
+              Poker Club
+            </Title>
+            <Text c="dimmed" ta="center">
+              Telegram Mini App Mode
             </Text>
-            <Text ta="center" c="dimmed">
-              You are running in Telegram Mini App mode. Authentication is
-              handled automatically via Telegram.
-            </Text>
-            <Alert color="blue" variant="filled" title="Auto-authentication">
-              The app will automatically authenticate you using your Telegram
-              account. If authentication doesn't happen automatically, please
-              restart the Mini App.
-            </Alert>
+
+            <Stack gap="md" align="center">
+              <Text ta="center" size="lg" fw={500}>
+                Authentication via Telegram
+              </Text>
+              <Text ta="center" c="dimmed" size="sm">
+                You are running in Telegram Mini App mode. Authentication is
+                handled automatically via Telegram.
+              </Text>
+              <Alert
+                color="blue"
+                variant="filled"
+                title="Auto-authentication"
+                icon={<IconInfoCircle size={16} />}
+              >
+                The app will automatically authenticate you using your Telegram
+                account. If authentication doesn't happen automatically, please
+                restart the Mini App.
+              </Alert>
+            </Stack>
           </Stack>
-        </Card>
-      </Stack>
+        </Paper>
+      </Center>
     )
   }
 
   return (
-    <Stack
-      align="center"
-      style={{ minHeight: '400px', justifyContent: 'center' }}
-    >
-      <Title order={1} ta="center">
-        Poker Club
-      </Title>
-      <Text c="dimmed" ta="center">
-        Sign in to your account
-      </Text>
-
-      <Card
-        shadow="sm"
-        padding="lg"
+    <Center style={{ minHeight: '100vh' }}>
+      <Paper
+        shadow="md"
         radius="md"
+        p="xl"
         withBorder
         style={{ maxWidth: '400px', width: '100%' }}
       >
-        <Stack gap="md">
-          <form onSubmit={handleSubmit}>
+        <Stack gap="lg" align="center">
+          <Title order={1} ta="center">
+            Poker Club
+          </Title>
+          <Text c="dimmed" ta="center">
+            Sign in to your account
+          </Text>
+
+          <form onSubmit={handleSubmit} style={{ width: '100%' }}>
             <Stack gap="md">
               {error && (
-                <Alert color="red" variant="filled" title="Login Failed">
+                <Alert
+                  color="red"
+                  variant="filled"
+                  title="Login Failed"
+                  icon={<IconInfoCircle size={16} />}
+                >
                   {error}
                 </Alert>
               )}
@@ -159,6 +167,7 @@ export function LoginPage() {
                 autoComplete="username"
                 required
                 error={form.errors.login}
+                leftSection={<IconUser size={16} />}
               />
 
               <TextInput
@@ -169,6 +178,7 @@ export function LoginPage() {
                 autoComplete="current-password"
                 required
                 error={form.errors.password}
+                leftSection={<IconLock size={16} />}
               />
 
               <Button
@@ -191,7 +201,7 @@ export function LoginPage() {
             </Text>
           </Group>
         </Stack>
-      </Card>
-    </Stack>
+      </Paper>
+    </Center>
   )
 }

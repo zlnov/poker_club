@@ -8,7 +8,7 @@
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Center, Text, Title } from '@mantine/core'
+import { EmptyState } from '../components/ui'
 
 /**
  * Club games page.
@@ -18,15 +18,9 @@ import { Center, Text, Title } from '@mantine/core'
  */
 export function ClubGames() {
   return (
-    <Center style={{ minHeight: '400px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <Title order={2} mb="sm">
-          Games
-        </Title>
-        <Text c="dimmed">
-          Club games list will be implemented in a future phase.
-        </Text>
-      </div>
-    </Center>
+    <EmptyState
+      title="Games"
+      description="Club games list will be implemented in a future phase."
+    />
   )
 }

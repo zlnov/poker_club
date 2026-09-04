@@ -13,13 +13,12 @@ import type { MantineThemeOverride } from '@mantine/core'
 /**
  * Poker Club color palette.
  *
- * Based on the approved design tokens from src/styles/index.css.
- * The primary color is violet, matching the --accent CSS variable.
- *
  * Each color is a MantineColorsTuple (readonly tuple of 10 strings).
+ * Colors are centralized here so individual components reference theme
+ * colors rather than hardcoding values.
  */
 export const pokerClubColors = {
-  // Violet / accent palette (matches --accent)
+  // Violet / accent palette — primary brand color
   violet: [
     '#f5f3ff',
     '#ede9fe',
@@ -32,7 +31,7 @@ export const pokerClubColors = {
     '#6d28d9',
     '#5b21b6',
   ],
-  // Success (matches --success)
+  // Success
   success: [
     '#dcfce8',
     '#bbf7d0',
@@ -45,7 +44,7 @@ export const pokerClubColors = {
     '#166534',
     '#14532d',
   ],
-  // Error (matches --error)
+  // Error
   error: [
     '#fee2e2',
     '#fecaca',
@@ -58,7 +57,7 @@ export const pokerClubColors = {
     '#991b1b',
     '#7f1d1d',
   ],
-  // Warning (matches --warning)
+  // Warning
   warning: [
     '#fef3c7',
     '#fde68a',
@@ -71,7 +70,7 @@ export const pokerClubColors = {
     '#92400e',
     '#78350f',
   ],
-  // Info (matches --info)
+  // Info
   info: [
     '#dbeafe',
     '#bfdbfe',
@@ -84,7 +83,7 @@ export const pokerClubColors = {
     '#1e40af',
     '#1e3a8a',
   ],
-  // Gray / neutral palette (matches --border, --muted, etc.)
+  // Gray / neutral palette
   gray: [
     '#f9fafb',
     '#f3f4f6',
@@ -122,13 +121,13 @@ export const pokerClubColors = {
  * - Typography (font family, heading sizes)
  * - Spacing and border radius
  * - Component variants for consistency
+ * - Shadows for elevation
  *
  * See 05_FE_UX.md section 2 (Design System).
  */
 export const pokerClubTheme: MantineThemeOverride = {
   colors: pokerClubColors,
   primaryColor: 'violet',
-  // Use the CSS font stack from index.css
   fontFamily:
     "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   fontFamilyMonospace:
@@ -137,6 +136,14 @@ export const pokerClubTheme: MantineThemeOverride = {
     fontFamily:
       "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     fontWeight: '500',
+    sizes: {
+      h1: { fontSize: '2.25rem', lineHeight: '2.5rem' },
+      h2: { fontSize: '1.875rem', lineHeight: '2.25rem' },
+      h3: { fontSize: '1.5rem', lineHeight: '2rem' },
+      h4: { fontSize: '1.25rem', lineHeight: '1.75rem' },
+      h5: { fontSize: '1.125rem', lineHeight: '1.5rem' },
+      h6: { fontSize: '1rem', lineHeight: '1.5rem' },
+    },
   },
   radius: {
     xs: '0.25rem',
@@ -151,6 +158,85 @@ export const pokerClubTheme: MantineThemeOverride = {
     md: '1rem',
     lg: '1.5rem',
     xl: '2rem',
+  },
+  shadows: {
+    xs: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 2px -1px rgba(0, 0, 0, 0.03)',
+    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+    md: '0 1px 4px 0 rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    lg: '0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07)',
+    xl: '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08)',
+  },
+  components: {
+    Button: {
+      styles: {
+        root: {
+          fontWeight: 500,
+        },
+      },
+      defaultProps: {
+        radius: 'md',
+      },
+    },
+    ActionIcon: {
+      defaultProps: {
+        radius: 'md',
+        variant: 'subtle',
+      },
+    },
+    NavLink: {
+      styles: {
+        body: {
+          fontWeight: 500,
+        },
+      },
+    },
+    Card: {
+      defaultProps: {
+        radius: 'md',
+        withBorder: true,
+      },
+    },
+    Paper: {
+      defaultProps: {
+        radius: 'md',
+        withBorder: true,
+      },
+    },
+    Input: {
+      defaultProps: {
+        radius: 'md',
+      },
+    },
+    TextInput: {
+      defaultProps: {
+        radius: 'md',
+      },
+    },
+    PasswordInput: {
+      defaultProps: {
+        radius: 'md',
+      },
+    },
+    Select: {
+      defaultProps: {
+        radius: 'md',
+      },
+    },
+    Textarea: {
+      defaultProps: {
+        radius: 'md',
+      },
+    },
+    Container: {
+      defaultProps: {
+        size: 'lg',
+      },
+    },
+    Title: {
+      defaultProps: {
+        fw: 500,
+      },
+    },
   },
 }
 

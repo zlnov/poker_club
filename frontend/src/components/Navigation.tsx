@@ -16,19 +16,21 @@ import {
   NavLink as MantineNavLink,
   ScrollArea,
   Stack,
-  UnstyledButton,
   useMantineColorScheme,
+  Group,
+  Text,
+  useMantineTheme,
 } from '@mantine/core'
 import {
   IconHome,
   IconUsers,
   IconChartBar,
   IconSettings,
-  IconSun,
-  IconMoonStars,
   IconChessKing,
+  IconClubs,
 } from '@tabler/icons-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { ThemeToggle } from './ThemeToggle'
 
 /** Navigation item definition. */
 interface NavItem {
@@ -49,7 +51,7 @@ const clubNavItems: NavItem[] = [
 
 /** Top-level navigation items (shown outside club context). */
 const topNavItems: NavItem[] = [
-  { label: 'Clubs', href: '/clubs', icon: IconChessKing },
+  { label: 'Clubs', href: '/clubs', icon: IconClubs },
   { label: 'Profile', href: '/profile', icon: IconUsers },
 ]
 
@@ -63,7 +65,8 @@ const topNavItems: NavItem[] = [
 export function Navigation() {
   const location = useLocation()
   const params = useParams()
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
+  const { colorScheme } = useMantineColorScheme()
+  const theme = useMantineTheme()
 
   const clubId = params.clubId
   const showClubNav = !!clubId
@@ -93,8 +96,8 @@ export function Navigation() {
   }
 
   return (
-    <ScrollArea style={{ height: 'calc(100vh - 60px)' }}>
-      <Stack gap={4} p="md">
+    <ScrollArea style={{ height: 'calc(100vh - 64px)' }}>
+      <Stack gap={4} p="md" pt="xl">
         {showClubNav ? (
           <>
             {clubNavItems.map((item) =>
@@ -106,26 +109,21 @@ export function Navigation() {
         )}
 
         {/* Theme toggle at the bottom */}
-        <UnstyledButton
-          onClick={() => toggleColorScheme()}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            width: '100%',
-            padding: '8px 12px',
-            borderRadius: 'var(--mantine-radius-sm)',
-            color: 'var(--mantine-color-text)',
-          }}
+        <Stack
+          gap="xs"
+          pt="lg"
+          style={{ borderTop: `1px solid ${theme.colors.gray[2]}` }}
         >
-          {colorScheme === 'dark' ? (
-            <IconSun size={18} />
-          ) : (
-            <IconMoonStars size={18} />
-          )}
-          <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem' }}>
-            {colorScheme === 'dark' ? 'Light mode' : 'Dark mode'}
-          </span>
-        </UnstyledButton>
+          <Text size="xs" c="dimmed" fw={500}>
+            Appearance
+          </Text>
+          <Group gap="xs">
+            <ThemeToggle size="sm" />
+            <Text size="sm" c="dimmed">
+              {colorScheme === 'dark' ? 'Dark mode' : 'Light mode'}
+            </Text>
+          </Group>
+        </Stack>
       </Stack>
     </ScrollArea>
   )
