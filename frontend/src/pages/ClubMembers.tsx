@@ -21,6 +21,7 @@ import {
   Select,
   Modal,
   ActionIcon,
+  TextInput,
 } from '@mantine/core'
 import {
   IconCrown,
@@ -29,6 +30,8 @@ import {
   IconTrash,
   IconCheck,
   IconX,
+  IconPlus,
+  IconInfoCircle,
 } from '@tabler/icons-react'
 import { useParams } from 'react-router-dom'
 import {
@@ -42,14 +45,16 @@ import {
   useClub,
   useClubMembers,
   useMembershipRequests,
+  useClubInvites,
   useUpdateMember,
   useRemoveMember,
   useApproveMember,
   useRejectMember,
+  useCreateInvite,
 } from '../features'
 import { ApiClientError } from '../api'
 import { notifications } from '@mantine/notifications'
-import type { ClubMemberRole } from '../types'
+import type { ClubMemberRole, InvitationInfo } from '../types'
 
 /** Role options for the select dropdown. */
 const roleOptions = [
@@ -72,6 +77,14 @@ function formatPlayerName(member: ClubMemberRole): string {
 }
 
 /**
+ * Formats an invitation's player display name.
+ */
+function formatInviteName(invite: InvitationInfo): string {
+  const parts = [invite.firstName, invite.lastName].filter(Boolean)
+  return parts.length > 0 ? parts.join(' ') : invite.nickname || 'Unknown'
+}
+
+/**
  * Club members page.
  *
  * Displays:
@@ -88,6 +101,12 @@ export function ClubMembers() {
     playerId: number
     name: string
   } | null>(null)
+  const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [inviteTgUserId, setInviteTgUserId] = useState('')
+  const [inviteInfoOpen, setInviteInfoOpen] = useState(false)
+  const [selectedInvite, setSelectedInvite] = useState<InvitationInfo | null>(
+    null,
+  )
 
   const { data: club } = useClub(clubIdNum)
   const isOwner = club?.isOwner ?? false
@@ -113,6 +132,14 @@ export function ClubMembers() {
   const removeMember = useRemoveMember()
   const approveMember = useApproveMember()
   const rejectMember = useRejectMember()
+  const createInvite = useCreateInvite()
+
+  const {
+    data: invites,
+    isLoading: invitesLoading,
+    isError: invitesError,
+    refetch: refetchInvites,
+  } = useClubInvites(clubIdNum)
 
   const handleRoleChange = async (playerId: number, newRole: string) => {
     try {
@@ -235,8 +262,47 @@ export function ClubMembers() {
     }
   }
 
-  const isLoading = membersLoading || requestsLoading
-  const isError = membersError || requestsError
+  const handleCreateInvite = async () => {
+    const tgUserId = parseInt(inviteTgUserId, 10)
+    if (isNaN(tgUserId) || tgUserId <= 0) {
+      notifications.show({
+        title: 'Invalid Telegram User ID',
+        message: 'Please enter a valid Telegram user ID.',
+        color: 'red',
+      })
+      return
+    }
+    try {
+      await createInvite.mutateAsync({
+        clubId: clubIdNum,
+        tgUserId,
+      })
+      notifications.show({
+        title: 'Invitation created',
+        message: 'Invitation has been sent successfully.',
+        color: 'green',
+      })
+      setInviteModalOpen(false)
+      setInviteTgUserId('')
+      refetchInvites()
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        notifications.show({
+          title: 'Failed to create invitation',
+          message: err.message,
+          color: 'red',
+        })
+      }
+    }
+  }
+
+  const handleInviteClick = (invite: InvitationInfo) => {
+    setSelectedInvite(invite)
+    setInviteInfoOpen(true)
+  }
+
+  const isLoading = membersLoading || requestsLoading || invitesLoading
+  const isError = membersError || requestsError || invitesError
 
   if (isLoading) {
     return (
@@ -309,6 +375,53 @@ export function ClubMembers() {
               </Group>
             ))}
           </Stack>
+        </Card>
+      )}
+
+      {/* Invitations Section (Owner/Admin only) */}
+      {canManage && (
+        <Card mt="lg" padding="lg" radius="md" withBorder>
+          <Group justify="space-between" mb="md">
+            <Title order={4} mb={0}>
+              Invitations
+            </Title>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setInviteModalOpen(true)}
+              size="sm"
+            >
+              Create Invitation
+            </Button>
+          </Group>
+
+          {invites && invites.length === 0 ? (
+            <EmptyState
+              title="No invitations"
+              description="No pending invitations. Create an invitation to invite a player to the club."
+            />
+          ) : (
+            <Stack gap="sm">
+              {invites?.map((invite) => (
+                <Group key={invite.playerId} justify="space-between">
+                  <Group gap="sm">
+                    <IconUser size={20} />
+                    <Stack gap={2}>
+                      <Text fw={500}>{formatInviteName(invite)}</Text>
+                      <Text size="sm" c="dimmed">
+                        Telegram ID: {invite.tgUserId ?? '—'}
+                      </Text>
+                    </Stack>
+                  </Group>
+                  <ActionIcon
+                    variant="subtle"
+                    onClick={() => handleInviteClick(invite)}
+                  >
+                    <IconInfoCircle size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+            </Stack>
+          )}
         </Card>
       )}
 
@@ -445,6 +558,86 @@ export function ClubMembers() {
             </Button>
           </Group>
         </Stack>
+      </Modal>
+
+      {/* Create Invitation Modal */}
+      <Modal
+        opened={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        title="Create Invitation"
+        centered
+      >
+        <Stack gap="md">
+          <Text>
+            Enter the Telegram user ID of the player you want to invite to the
+            club.
+          </Text>
+          <TextInput
+            label="Telegram User ID"
+            placeholder="Enter Telegram user ID"
+            value={inviteTgUserId}
+            onChange={(e) => setInviteTgUserId(e.target.value)}
+            required
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="subtle"
+              onClick={() => setInviteModalOpen(false)}
+              disabled={createInvite.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateInvite}
+              loading={createInvite.isPending}
+            >
+              Create
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Invitation Information Modal */}
+      <Modal
+        opened={inviteInfoOpen}
+        onClose={() => setInviteInfoOpen(false)}
+        title="Invitation Information"
+        centered
+        size="md"
+      >
+        {selectedInvite && (
+          <Stack gap="md">
+            <Group gap="sm">
+              <IconUser size={20} />
+              <Stack gap={2}>
+                <Text fw={500}>{formatInviteName(selectedInvite)}</Text>
+                <Text size="sm" c="dimmed">
+                  Telegram ID: {selectedInvite.tgUserId ?? '—'}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Status: {selectedInvite.status}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Accepted: {selectedInvite.accepted ? 'Yes' : 'No'}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Created: {new Date(selectedInvite.createdAt).toLocaleString()}
+                </Text>
+              </Stack>
+            </Group>
+
+            <Text size="sm" c="dimmed">
+              The invited user will receive a Telegram message with a deep link
+              to accept the invitation.
+            </Text>
+
+            <Group justify="flex-end">
+              <Button variant="subtle" onClick={() => setInviteInfoOpen(false)}>
+                Close
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
     </PageContainer>
   )

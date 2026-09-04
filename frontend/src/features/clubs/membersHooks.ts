@@ -11,7 +11,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useApiClient } from '../../hooks'
 import { clubKeys } from '../clubs/hooks'
-import type { ClubMemberRole } from '../../types'
+import type { ClubMemberRole, InvitationInfo } from '../../types'
 
 // --- Backend response types (snake_case from API) ---
 
@@ -53,6 +53,20 @@ function mapClubMember(member: BackendClubMember): ClubMemberRole {
     canAdjustResults: member.role === 'owner' || member.role === 'admin',
     canInvite: member.role === 'owner' || member.role === 'admin',
     canRemove: member.role === 'owner' || member.role === 'admin',
+  }
+}
+
+function mapInvitation(member: BackendClubMember): InvitationInfo {
+  return {
+    playerId: member.player_id,
+    firstName: member.player.first_name,
+    lastName: member.player.last_name,
+    nickname: member.player.nickname,
+    tgUserId: member.player.tg_user_id,
+    status: member.status as 'pending',
+    accepted: member.accepted,
+    createdAt: member.created_at,
+    updatedAt: member.updated_at,
   }
 }
 
@@ -103,7 +117,7 @@ export function useClubInvites(clubId: number) {
       const response = await apiClient.get<{ invites: BackendClubMember[] }>(
         `/clubs/${clubId}/invites`,
       )
-      return response.data.invites.map(mapClubMember)
+      return response.data.invites.map(mapInvitation)
     },
     enabled: !!clubId,
   })

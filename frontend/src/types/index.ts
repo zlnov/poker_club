@@ -192,6 +192,28 @@ export interface ClubMemberRole {
   canRemove: boolean
 }
 
+/** Invitation information for a club. */
+export interface InvitationInfo {
+  /** Player ID of the invited user. */
+  playerId: number
+  /** Player first name. */
+  firstName: string
+  /** Player last name. */
+  lastName: string
+  /** Player nickname/username. */
+  nickname: string
+  /** Telegram user ID of the invited player. */
+  tgUserId?: number
+  /** Invitation status (always 'pending' for invitations). */
+  status: 'pending'
+  /** Whether the invitation has been accepted. */
+  accepted: boolean
+  /** When the invitation was created. */
+  createdAt: string
+  /** When the invitation was last updated. */
+  updatedAt: string
+}
+
 /** API response wrapper. */
 export interface ApiResponse<T> {
   /** Success flag. */
