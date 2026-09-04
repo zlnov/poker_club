@@ -172,6 +172,12 @@ export interface CurrentUser {
 export interface ClubMemberRole {
   /** Player ID. */
   playerId: number
+  /** Player first name. */
+  firstName: string
+  /** Player last name. */
+  lastName: string
+  /** Player nickname/username. */
+  nickname: string
   /** Role (owner, admin, member). */
   role: 'owner' | 'admin' | 'member'
   /** Status (pending, active, banned, left). */
