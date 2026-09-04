@@ -17,6 +17,40 @@ type contextKey string
 
 const authenticatedUserKey contextKey = "authenticated_user"
 
+// CORSMiddleware creates a Gin middleware that handles CORS.
+// It allows requests from the configured frontend origin and supports
+// credentials (JWT Bearer tokens in the Authorization header).
+//
+// The middleware:
+// - Sets Access-Control-Allow-Origin to the specific frontend origin (not "*")
+// - Sets Access-Control-Allow-Credentials to "true"
+// - Handles OPTIONS preflight requests by returning 204
+// - Allows standard methods (GET, POST, PATCH, DELETE, PUT, OPTIONS)
+// - Allows standard headers including Authorization and Content-Type
+func CORSMiddleware(frontendOrigin string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+
+		// Only set CORS headers if the origin matches the configured frontend origin
+		if origin == frontendOrigin {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Vary", "Origin")
+		}
+
+		// Handle preflight OPTIONS requests
+		if c.Request.Method == http.MethodOptions {
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, PUT, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With")
+			c.Header("Access-Control-Max-Age", "86400")
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
+
 // GetAuthenticatedUser retrieves the authenticated user from the Gin context.
 // Returns nil and false if no authenticated user is present.
 func GetAuthenticatedUser(c *gin.Context) (*domain.AuthenticatedUser, bool) {

@@ -8,20 +8,21 @@ import (
 
 // Config holds all application configuration loaded from environment variables.
 type Config struct {
-	BotToken    string
-	DBHost      string
-	DBPort      string
-	DBUser      string
-	DBPassword  string
-	DBName      string
-	DBSSLMode   string
-	WebhookURL  string
-	WebhookPort string
-	LongPolling bool
-	LogLevel    string
-	JWTSecret   string
-	JWTIssuer   string
-	JWTAudience string
+	BotToken       string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBSSLMode      string
+	WebhookURL     string
+	WebhookPort    string
+	LongPolling    bool
+	LogLevel       string
+	JWTSecret      string
+	JWTIssuer      string
+	JWTAudience    string
+	FrontendOrigin string
 }
 
 // Load reads configuration from environment variables and returns a Config.
@@ -38,9 +39,10 @@ func Load() *Config {
 		WebhookPort: getEnv("WEBHOOK_PORT", "8080"),
 		LongPolling: getEnvBool("LONG_POLLING", true),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		JWTIssuer:   getEnv("JWT_ISSUER", "poker-club"),
-		JWTAudience: getEnv("JWT_AUDIENCE", "poker-club-web"),
+		JWTSecret:      os.Getenv("JWT_SECRET"),
+		JWTIssuer:      getEnv("JWT_ISSUER", "poker-club"),
+		JWTAudience:    getEnv("JWT_AUDIENCE", "poker-club-web"),
+		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:3000"),
 	}
 }
 
