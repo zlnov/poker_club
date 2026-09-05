@@ -117,7 +117,13 @@ func (h *ClubHandler) GetClub(c *gin.Context) {
 	}
 
 	// Get the authenticated user's role in this club.
-	member, memberErr := h.svc.GetClubMember(c.Request.Context(), clubID, tgUserID)
+	// Resolve tgUserID to playerID before looking up club membership.
+	player, playerErr := h.svc.GetPlayerByTgUserID(c.Request.Context(), tgUserID)
+	var member *domain.ClubMember
+	var memberErr error
+	if playerErr == nil {
+		member, memberErr = h.svc.GetClubMember(c.Request.Context(), clubID, player.ID)
+	}
 
 	response := serializeClub(club)
 	if memberErr == nil {

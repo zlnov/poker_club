@@ -100,7 +100,7 @@ export function useMembershipRequests(clubId: number) {
       const response = await apiClient.get<{ requests: BackendClubMember[] }>(
         `/clubs/${clubId}/member-requests`,
       )
-      return response.data.requests.map(mapClubMember)
+      return response.data.requests?.map(mapClubMember) ?? []
     },
     enabled: !!clubId,
   })
@@ -117,7 +117,7 @@ export function useClubInvites(clubId: number) {
       const response = await apiClient.get<{ invites: BackendClubMember[] }>(
         `/clubs/${clubId}/invites`,
       )
-      return response.data.invites.map(mapInvitation)
+      return response.data.invites?.map(mapInvitation) ?? []
     },
     enabled: !!clubId,
   })
