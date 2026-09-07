@@ -43,6 +43,7 @@ interface BackendClubMember {
 
 function mapClubMember(member: BackendClubMember): ClubMemberRole {
   return {
+    clubMemberId: member.id,
     playerId: member.player_id,
     firstName: member.player.first_name,
     lastName: member.player.last_name,

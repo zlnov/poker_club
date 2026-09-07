@@ -45,7 +45,7 @@ export interface ClubSummary {
 }
 
 /** Game type. */
-export type GameType = 'cash' | 'tournament'
+export type GameType = 'cash_time' | 'cash_open' | 'tournament'
 
 /** Game status. */
 export type GameStatus = 'planned' | 'active' | 'finished' | 'cancelled'
@@ -54,11 +54,15 @@ export type GameStatus = 'planned' | 'active' | 'finished' | 'cancelled'
 export interface GameSummary {
   /** Game ID. */
   id: number
+  /** Club ID the game belongs to. */
+  clubId: number
   /** Game type. */
   type: GameType
   /** Status. */
   status: GameStatus
-  /** Creator/host. */
+  /** Banker player ID. */
+  bankerId: number
+  /** Banker display name. */
   bankerName: string
   /** Start time. */
   startTime: string
@@ -76,12 +80,94 @@ export interface GameSummary {
   rebuyPrice?: number
   /** Max rebuys (if allowed). */
   maxRebuys?: number
+  /** Duration in seconds (for cash_time games). */
+  durationSeconds?: number
   /** Min players. */
   minPlayers: number
   /** Max players. */
   maxPlayers: number
   /** Current player count. */
   currentPlayers: number
+}
+
+/** Full game details from the Backend. */
+export interface GameDetails {
+  /** Game ID. */
+  id: number
+  /** Club ID the game belongs to. */
+  clubId: number
+  /** Banker club member ID. */
+  bankerId: number
+  /** Game type (cash or tournament). */
+  gameType: string
+  /** Currency code. */
+  currency: string
+  /** Money model (real, points, virtual, practice). */
+  moneyModel: string
+  /** Chip value. */
+  chipValue: number
+  /** Buy-in amount. */
+  buyInAmount: number
+  /** Rebuy allowed. */
+  rebuyAllowed: boolean
+  /** Rebuy price (if allowed). */
+  rebuyPrice?: number
+  /** Max rebuys (if allowed). */
+  maxRebuys?: number
+  /** Duration in seconds (for cash_time games). */
+  durationSeconds?: number
+  /** Start time. */
+  startTime: string
+  /** End time (if finished). */
+  endTime?: string
+  /** Status. */
+  status: GameStatus
+  /** Min players. */
+  minPlayers: number
+  /** Max players. */
+  maxPlayers: number
+  /** Primary ranking method. */
+  rankingPrimary: string
+  /** Secondary ranking method (optional). */
+  rankingSecondary?: string
+  /** Created at timestamp. */
+  createdAt: string
+  /** Updated at timestamp. */
+  updatedAt: string
+}
+
+/** Game configuration form values. */
+export interface GameConfig {
+  /** Game type. */
+  gameType: GameType
+  /** Currency code. */
+  currency: string
+  /** Money model. */
+  moneyModel: string
+  /** Chip value. */
+  chipValue: number
+  /** Buy-in amount. */
+  buyInAmount: number
+  /** Rebuy allowed. */
+  rebuyAllowed: boolean
+  /** Rebuy price (if allowed). */
+  rebuyPrice?: number
+  /** Max rebuys (if allowed). */
+  maxRebuys?: number
+  /** Duration in seconds (for cash_time games). */
+  durationSeconds?: number
+  /** Scheduled start time. */
+  startTime?: string
+  /** Min players. */
+  minPlayers: number
+  /** Max players. */
+  maxPlayers: number
+  /** Primary ranking method. */
+  rankingPrimary: string
+  /** Secondary ranking method (optional). */
+  rankingSecondary?: string
+  /** Banker player ID. */
+  bankerId: number
 }
 
 /** Game participant information. */
@@ -170,6 +256,8 @@ export interface CurrentUser {
 
 /** Club member role. */
 export interface ClubMemberRole {
+  /** Club member ID (maps to club_members.id in Backend). */
+  clubMemberId: number
   /** Player ID. */
   playerId: number
   /** Player first name. */

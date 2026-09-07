@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    allowedHosts: ['aa46-87-120-126-160.ngrok-free.app'],
   },
   build: {
     outDir: 'dist',
