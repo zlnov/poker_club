@@ -99,7 +99,7 @@ func TestCORSMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			router := gin.New()
-			router.Use(CORSMiddleware("http://localhost:3000"))
+			router.Use(CORSMiddleware([]string{"http://localhost:3000"}))
 			router.GET("/test", func(c *gin.Context) {
 				c.Status(http.StatusOK)
 			})
@@ -130,7 +130,7 @@ func TestCORSMiddlewareAllowsAuthorizationHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(CORSMiddleware("http://localhost:3000"))
+	router.Use(CORSMiddleware([]string{"http://localhost:3000"}))
 	router.GET("/test", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

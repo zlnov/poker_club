@@ -21,6 +21,9 @@ import { useTelegramWebApp } from '../hooks'
  *
  * Ensures authentication is only attempted once per session to prevent
  * duplicate initialization.
+ *
+ * If the Telegram WebApp API is detected but initData is not yet available,
+ * the hook retries on subsequent renders until initData is present.
  */
 export function useTelegramAuth() {
   const { loginWithTelegram, state } = useAuth()
@@ -29,7 +32,7 @@ export function useTelegramAuth() {
   // Track whether we've already attempted Telegram authentication
   const authAttemptedRef = useRef(false)
 
-  const authenticateWithTelegram = useCallback(async () => {
+   const authenticateWithTelegram = useCallback(async () => {
     // Prevent duplicate authentication attempts
     if (authAttemptedRef.current) {
       return
@@ -37,6 +40,7 @@ export function useTelegramAuth() {
 
     // Only proceed if we have initData
     if (!webApp?.initData) {
+      // Don't mark as attempted — initData may become available later
       return
     }
 
@@ -56,7 +60,7 @@ export function useTelegramAuth() {
     }
   }, [webApp, loginWithTelegram])
 
-  // Run authentication on mount
+  // Run authentication when webApp or initData changes
   useEffect(() => {
     // Only run in Telegram Mini App mode and when not already authenticated
     if (webApp && state !== 'authenticated') {

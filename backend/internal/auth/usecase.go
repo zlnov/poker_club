@@ -63,6 +63,11 @@ func (uc *AuthUseCase) AuthenticateTelegram(ctx context.Context, initData string
 	// Validate the Telegram initData.
 	parsed, err := ValidateTelegramInitData(initData, uc.botToken, uc.maxAge)
 	if err != nil {
+		uc.log.Warn("telegram auth validation failed",
+			"error", err.Error(),
+			"botToken_len", len(uc.botToken),
+			"initData_len", len(initData),
+		)
 		if err == ErrExpiredInitData {
 			return nil, ErrTelegramInitDataExpired
 		}

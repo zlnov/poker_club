@@ -320,6 +320,20 @@ func TestJWTManager_HashToken(t *testing.T) {
 	}
 }
 
+// generateValidTelegramHash computes the correct Telegram hash for test initData.
+// Per Telegram Mini Apps spec:
+//   secret_key = HMAC-SHA256(key="WebAppData", message=bot_token)
+//   hash = HMAC-SHA256(key=secret_key, message=data_check_string)
+func generateValidTelegramHash(dataCheckString, botToken string) string {
+	secretKeyMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	secretKeyMAC.Write([]byte(botToken))
+	secretKey := secretKeyMAC.Sum(nil)
+
+	mac := hmac.New(sha256.New, secretKey)
+	mac.Write([]byte(dataCheckString))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
 func TestValidateTelegramInitData_EmptyData(t *testing.T) {
 	_, err := ValidateTelegramInitData("", "test-bot-token", time.Hour)
 	if err != ErrInvalidInitData {
@@ -354,10 +368,7 @@ func TestValidateTelegramInitData_Expired(t *testing.T) {
 
 	dataCheckString := fmt.Sprintf("auth_date=%d\nuser=%s", authDate, userJSON)
 
-	secretKey := sha256.Sum256([]byte(botToken))
-	mac := hmac.New(sha256.New, secretKey[:])
-	mac.Write([]byte(dataCheckString))
-	hash := hex.EncodeToString(mac.Sum(nil))
+	hash := generateValidTelegramHash(dataCheckString, botToken)
 
 	initData := fmt.Sprintf("user=%s&auth_date=%d&hash=%s", userEncoded, authDate, hash)
 
@@ -376,10 +387,7 @@ func TestValidateTelegramInitData_Valid(t *testing.T) {
 
 	dataCheckString := fmt.Sprintf("auth_date=%d\nuser=%s", authDate, userJSON)
 
-	secretKey := sha256.Sum256([]byte(botToken))
-	mac := hmac.New(sha256.New, secretKey[:])
-	mac.Write([]byte(dataCheckString))
-	hash := hex.EncodeToString(mac.Sum(nil))
+	hash := generateValidTelegramHash(dataCheckString, botToken)
 
 	initData := fmt.Sprintf("user=%s&auth_date=%d&hash=%s", userEncoded, authDate, hash)
 
@@ -420,10 +428,7 @@ func TestAuthenticateTelegram_NewPlayer(t *testing.T) {
 	userJSON := `{"id":12345,"first_name":"Test","last_name":"User","username":"testuser"}`
 	userEncoded := url.QueryEscape(userJSON)
 	dataCheckString := fmt.Sprintf("auth_date=%d\nuser=%s", authDate, userJSON)
-	secretKey := sha256.Sum256([]byte(botToken))
-	mac := hmac.New(sha256.New, secretKey[:])
-	mac.Write([]byte(dataCheckString))
-	hash := hex.EncodeToString(mac.Sum(nil))
+	hash := generateValidTelegramHash(dataCheckString, botToken)
 	initData := fmt.Sprintf("user=%s&auth_date=%d&hash=%s", userEncoded, authDate, hash)
 
 	tokens, err := uc.AuthenticateTelegram(context.Background(), initData)
@@ -472,10 +477,7 @@ func TestAuthenticateTelegram_ExistingPlayer(t *testing.T) {
 	userJSON := `{"id":12345,"first_name":"Test","last_name":"User","username":"testuser"}`
 	userEncoded := url.QueryEscape(userJSON)
 	dataCheckString := fmt.Sprintf("auth_date=%d\nuser=%s", authDate, userJSON)
-	secretKey := sha256.Sum256([]byte(botToken))
-	mac := hmac.New(sha256.New, secretKey[:])
-	mac.Write([]byte(dataCheckString))
-	hash := hex.EncodeToString(mac.Sum(nil))
+	hash := generateValidTelegramHash(dataCheckString, botToken)
 	initData := fmt.Sprintf("user=%s&auth_date=%d&hash=%s", userEncoded, authDate, hash)
 
 	tokens, err := uc.AuthenticateTelegram(context.Background(), initData)

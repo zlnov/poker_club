@@ -17,6 +17,7 @@ import { type ReactNode, useMemo } from 'react'
 import { MantineProvider } from '@mantine/core'
 import { pokerClubTheme } from '../styles/theme'
 import { AuthProvider } from '../auth'
+import { TelegramEnvironmentProvider } from '../telegram'
 import { createQueryClient } from './queryClient'
 
 export interface AppProvidersProps {
@@ -50,7 +51,9 @@ export function AppProviders({ children }: AppProvidersProps) {
           limit={5}
           autoClose={5000}
         />
-        <AuthProvider>{children}</AuthProvider>
+        <TelegramEnvironmentProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </TelegramEnvironmentProvider>
       </MantineProvider>
     </QueryClientProvider>
   )

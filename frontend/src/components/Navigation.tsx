@@ -61,8 +61,11 @@ const topNavItems: NavItem[] = [
  * Renders top-level navigation (Clubs, Profile) when not in a club context,
  * or club-level navigation (Dashboard, Games, Members, Statistics, Settings)
  * when inside a club context.
+ *
+ * @param onNavigate - Optional callback invoked after a navigation link is clicked.
+ *                     Used by mobile Drawer to close after navigation.
  */
-export function Navigation() {
+export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
   const params = useParams()
   const { colorScheme } = useMantineColorScheme()
@@ -91,6 +94,7 @@ export function Navigation() {
         leftSection={<item.icon size={18} stroke={active ? 1.5 : 1} />}
         active={active}
         variant={active ? 'light' : 'subtle'}
+        onClick={onNavigate}
       />
     )
   }

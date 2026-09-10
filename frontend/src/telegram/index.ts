@@ -154,7 +154,11 @@ export interface TelegramEnvironmentInfo {
 export function createTelegramEnvironment(
   rawWebApp?: TelegramWebAppAPI,
 ): TelegramEnvironmentInfo {
-  const isTelegram = !!rawWebApp
+  // Telegram Mini App requires both the WebApp API AND initData.
+  // In a regular browser, the Telegram SDK script may be loaded (creating
+  // window.Telegram.WebApp) but initData will be absent because there is no
+  // Telegram WebView context. Only treat it as Mini App when initData is present.
+  const isTelegram = !!rawWebApp && !!rawWebApp.initData
   const environment: TelegramEnvironment = isTelegram
     ? 'telegram-mini-app'
     : 'standard-web'
@@ -207,3 +211,10 @@ export {
   applyTelegramTheme,
   type WebAppInitData,
 } from './webApp'
+
+// Re-export TelegramEnvironmentContext and Provider
+export {
+  TelegramEnvironmentContext,
+  TelegramEnvironmentProvider,
+  useTelegramEnvironmentContext,
+} from './TelegramEnvironmentContext'

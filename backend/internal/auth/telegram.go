@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"sort"
 	"strconv"
@@ -76,16 +77,23 @@ func ValidateTelegramInitData(initData, botToken string, maxAge time.Duration) (
 	}
 	dataCheckString := strings.Join(dataCheckStrings, "\n")
 
-	// Compute the secret key: SHA-256 of the bot token.
-	secretKey := sha256.Sum256([]byte(botToken))
+	// Compute the secret key: HMAC-SHA-256(key="WebAppData", message=bot_token).
+	// Per Telegram Mini Apps spec: secret_key = HMAC-SHA256("WebAppData", bot_token)
+	secretKeyMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	secretKeyMAC.Write([]byte(botToken))
+	secretKey := secretKeyMAC.Sum(nil)
 
 	// Compute HMAC-SHA-256 of the data-check string using the secret key.
-	mac := hmac.New(sha256.New, secretKey[:])
+	mac := hmac.New(sha256.New, secretKey)
 	mac.Write([]byte(dataCheckString))
 	expectedHash := hex.EncodeToString(mac.Sum(nil))
 
 	// Compare the computed hash with the provided hash.
 	if !hmac.Equal([]byte(expectedHash), []byte(hash)) {
+		// Safe diagnostic: log which stage failed without exposing secrets
+		log.Printf("telegram initData validation failed: hash mismatch. "+
+			"initData_keys=%v botToken_len=%d dataCheckString_len=%d hash_len=%d expectedHash_len=%d",
+			keys, len(botToken), len(dataCheckString), len(hash), len(expectedHash))
 		return nil, ErrInvalidInitData
 	}
 

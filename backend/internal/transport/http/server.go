@@ -29,7 +29,7 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 	// Middleware chain: Recovery -> Logger -> CORS
 	router.Use(gin.Recovery())
 	router.Use(gin.Logger())
-	router.Use(CORSMiddleware(cfg.FrontendOrigin))
+	router.Use(CORSMiddleware(cfg.FrontendOrigins))
 
 	// Healthcheck endpoint
 	router.GET("/health", func(c *gin.Context) {

@@ -12,9 +12,8 @@ import { useMemo, useContext } from 'react'
 import { getEnvironment, type EnvironmentConfig } from '../env'
 import type { ApiClient } from '../api'
 import {
-  createTelegramEnvironment,
-  getTelegramWebApp,
   type TelegramEnvironmentInfo,
+  useTelegramEnvironmentContext,
 } from '../telegram'
 import { ApiClientContext } from '../auth/ApiClientContext'
 
@@ -53,12 +52,14 @@ export function useApiClient(): ApiClient {
  *
  * The hook safely handles the absence of the Telegram WebApp API
  * and never throws (see 04_FE_SPEC.md section 7).
+ *
+ * This hook reads from the shared `TelegramEnvironmentContext`,
+ * ensuring all components see the same environment state.
+ * The context provider handles polling for the Telegram WebApp API
+ * availability.
  */
 export function useTelegramEnvironment(): TelegramEnvironmentInfo {
-  return useMemo(() => {
-    const webApp = getTelegramWebApp()
-    return createTelegramEnvironment(webApp)
-  }, [])
+  return useTelegramEnvironmentContext()
 }
 
 /**

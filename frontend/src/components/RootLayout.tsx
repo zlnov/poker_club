@@ -20,7 +20,10 @@ import {
   AppShellMain,
   Group,
   Title,
+  Burger,
+  Drawer,
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { useTelegramEnvironment } from '../hooks'
 import { applyTelegramThemeVariables } from '../styles'
 import { Navigation } from './Navigation'
@@ -36,6 +39,8 @@ import { useTelegramAuth } from '../auth/useTelegramAuth'
  */
 export function RootLayout() {
   const telegramEnv = useTelegramEnvironment()
+  const [drawerOpened, { open: openDrawer, close: closeDrawer }] = useDisclosure(false)
+
   // Initialize Telegram authentication (hook handles deduplication)
   useTelegramAuth()
 
@@ -64,9 +69,18 @@ export function RootLayout() {
     >
       <AppShellHeader>
         <Group h="100%" px="md" justify="space-between" align="center">
-          <Title order={3} fw={600}>
-            Poker Club
-          </Title>
+          <Group gap="sm">
+            <Burger
+              opened={drawerOpened}
+              onClick={openDrawer}
+              size="sm"
+              hiddenFrom="sm"
+              aria-label="Open navigation"
+            />
+            <Title order={3} fw={600}>
+              Poker Club
+            </Title>
+          </Group>
           <ThemeToggle />
         </Group>
       </AppShellHeader>
@@ -78,6 +92,18 @@ export function RootLayout() {
       <AppShellMain>
         <Outlet />
       </AppShellMain>
+
+      <Drawer
+        opened={drawerOpened}
+        onClose={closeDrawer}
+        title="Navigation"
+        size={260}
+        padding="md"
+        zIndex={1000}
+        hiddenFrom="sm"
+      >
+        <Navigation onNavigate={closeDrawer} />
+      </Drawer>
     </AppShell>
   )
 }
