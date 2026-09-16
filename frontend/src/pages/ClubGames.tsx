@@ -18,11 +18,11 @@ import {
   Button,
   Modal,
   Select,
-  TextInput,
   NumberInput,
   Checkbox,
   Grid,
 } from '@mantine/core'
+import { DateTimePicker } from '@mantine/dates'
 import {
   IconChessKing,
   IconCash,
@@ -112,6 +112,12 @@ const gameTypeOptions: { value: GameType; label: string }[] = [
   { value: 'tournament', label: 'Tournament' },
 ]
 
+const currencyOptions = [
+  { value: 'RUB', label: 'RUB' },
+  { value: 'USD', label: 'USD' },
+  { value: 'EUR', label: 'EUR' },
+]
+
 const moneyModelOptions = [
   { value: 'real', label: 'Real' },
   { value: 'points', label: 'Points' },
@@ -143,7 +149,7 @@ interface GameFormValues {
   rebuyPrice: number
   maxRebuys: number
   durationSeconds: number
-  startTime: string
+  startTime: Date | null
   minPlayers: number
   maxPlayers: number
   rankingPrimary: string
@@ -173,6 +179,14 @@ export function ClubGames() {
   const clubIdNum = clubId ? parseInt(clubId, 10) : 0
 
   const [createModalOpen, setCreateModalOpen] = useState(false)
+
+  // Default start time: current date at 19:00
+  const getDefaultStartTime = (): Date => {
+    const now = new Date()
+    const defaultDate = new Date(now)
+    defaultDate.setHours(19, 0, 0, 0)
+    return defaultDate
+  }
 
   const { data: club } = useClub(clubIdNum)
   const isOwner = club?.isOwner ?? false
@@ -208,7 +222,7 @@ export function ClubGames() {
   const form = useForm<GameFormValues>({
     initialValues: {
       gameType: 'cash_open',
-      currency: 'USD',
+      currency: 'RUB',
       moneyModel: 'real',
       chipValue: 1,
       buyInAmount: 0,
@@ -216,7 +230,7 @@ export function ClubGames() {
       rebuyPrice: 0,
       maxRebuys: 0,
       durationSeconds: 0,
-      startTime: '',
+      startTime: getDefaultStartTime(),
       minPlayers: 2,
       maxPlayers: 10,
       rankingPrimary: 'profit',
@@ -225,10 +239,7 @@ export function ClubGames() {
     },
     validate: {
       gameType: (value) => (!value ? 'Game type is required' : null),
-      currency: (value) =>
-        !value || value.trim().length < 3
-          ? 'Currency code is required (e.g. USD)'
-          : null,
+      currency: (value) => (!value ? 'Currency is required' : null),
       moneyModel: (value) => (!value ? 'Money model is required' : null),
       chipValue: (value) =>
         value <= 0 ? 'Chip value must be greater than 0' : null,
@@ -270,7 +281,7 @@ export function ClubGames() {
         values.gameType === 'cash_time' && values.durationSeconds > 0
           ? values.durationSeconds
           : undefined,
-      startTime: values.startTime || undefined,
+      startTime: values.startTime ? values.startTime.toISOString() : undefined,
       minPlayers: values.minPlayers,
       maxPlayers: values.maxPlayers,
       rankingPrimary: values.rankingPrimary,
@@ -457,11 +468,14 @@ export function ClubGames() {
             />
 
             {/* Currency */}
-            <TextInput
+            <Select
               label="Currency"
-              placeholder="USD"
+              placeholder="Select currency"
+              data={currencyOptions}
               value={form.values.currency}
-              onChange={(e) => form.setFieldValue('currency', e.target.value)}
+              onChange={(value) =>
+                form.setFieldValue('currency', value ?? 'RUB')
+              }
               required
               error={form.errors.currency}
               leftSection={<IconCurrencyDollar size={16} />}
@@ -564,13 +578,32 @@ export function ClubGames() {
             )}
 
             {/* Start Time */}
-            <TextInput
+            <DateTimePicker
               label="Start Time"
-              placeholder="2024-01-15T19:30:00"
+              placeholder="Select date and time"
               value={form.values.startTime}
-              onChange={(e) => form.setFieldValue('startTime', e.target.value)}
-              description="ISO 8601 format (optional)"
+              onChange={(value) => {
+                if (!value) {
+                  form.setFieldValue('startTime', null)
+                  return
+                }
+
+                const date = new Date(value)
+                form.setFieldValue(
+                  'startTime',
+                  Number.isNaN(date.getTime()) ? null : date,
+                )
+              }}
+              valueFormat="DD.MM.YYYY HH:mm"
+              defaultTimeValue="19:00"
               leftSection={<IconCalendar size={16} />}
+              clearable
+              timePickerProps={{
+                withDropdown: true,
+                format: '24h',
+                hoursStep: 1,
+                minutesStep: 15,
+              }}
             />
 
             {/* Min/Max Players */}

@@ -526,6 +526,113 @@ func (h *GameHandler) RemoveGameParticipant(c *gin.Context) {
 	})
 }
 
+// AcceptGameParticipation handles POST /api/v1/games/{gameId}/participants/me/accept.
+// Allows a player to accept a game invitation.
+func (h *GameHandler) AcceptGameParticipation(c *gin.Context) {
+	tgUserID, ok := getTgUserIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
+		return
+	}
+
+	gameID, err := parseIDParam(c, "gameId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid game ID")
+		return
+	}
+
+	// Get the game to resolve clubID.
+	game, err := h.svc.GetGameByID(c.Request.Context(), tgUserID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	player, _, _, err := h.svc.AcceptGameParticipation(c.Request.Context(), tgUserID, game.ClubID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"player":  serializePlayer(player),
+		"message": "game participation accepted",
+	})
+}
+
+// DeclineGameParticipation handles POST /api/v1/games/{gameId}/participants/me/decline.
+// Allows a player to decline a game invitation.
+func (h *GameHandler) DeclineGameParticipation(c *gin.Context) {
+	tgUserID, ok := getTgUserIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
+		return
+	}
+
+	gameID, err := parseIDParam(c, "gameId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid game ID")
+		return
+	}
+
+	// Get the game to resolve clubID.
+	game, err := h.svc.GetGameByID(c.Request.Context(), tgUserID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	_, _, err = h.svc.DeclineGameParticipation(c.Request.Context(), tgUserID, game.ClubID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "game participation declined",
+	})
+}
+
+// ConfirmGameParticipation handles POST /api/v1/games/{gameId}/participants/{playerId}/confirm.
+// Allows owner/admin to confirm a player's accepted game invitation.
+func (h *GameHandler) ConfirmGameParticipation(c *gin.Context) {
+	tgUserID, ok := getTgUserIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
+		return
+	}
+
+	gameID, err := parseIDParam(c, "gameId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid game ID")
+		return
+	}
+
+	playerID, err := parseIDParam(c, "playerId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid player ID")
+		return
+	}
+
+	// Get the game to resolve clubID.
+	game, err := h.svc.GetGameByID(c.Request.Context(), tgUserID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	player, _, err := h.svc.ConfirmGameParticipation(c.Request.Context(), tgUserID, game.ClubID, gameID, playerID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"player":  serializePlayer(player),
+		"message": "game participation confirmed",
+	})
+}
+
 // RegisterBuyIn handles POST /api/v1/games/{gameId}/participants/{playerId}/buy-in.
 // Registers a buy-in for a game participant.
 func (h *GameHandler) RegisterBuyIn(c *gin.Context) {

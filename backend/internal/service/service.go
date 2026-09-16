@@ -50,15 +50,23 @@ var rolePermissions = map[string][]Permission{
 		PermInviteToGame, PermManageGameParticipants, PermAdjustGameResults,
 	},
 	"member": {
+		PermViewClub,
 		PermListMembers,
 	},
+}
+
+// GameNotifier sends notifications when a game is created.
+// Implemented by the Telegram bot to send personal invitations to participants.
+type GameNotifier interface {
+	NotifyGameCreated(ctx context.Context, tgUserID, clubID, gameID int64)
 }
 
 // Service provides business logic operations.
 // It depends on repositories for data persistence.
 type Service struct {
-	repos *domain.Repositories
-	log   *slog.Logger
+	repos    *domain.Repositories
+	log      *slog.Logger
+	notifier GameNotifier
 }
 
 // New creates a new Service instance.
@@ -67,6 +75,12 @@ func New(repos *domain.Repositories, log *slog.Logger) *Service {
 		repos: repos,
 		log:   log,
 	}
+}
+
+// SetNotifier sets the game notification handler (e.g., Telegram bot).
+// Must be called after Service creation if notifications are needed.
+func (s *Service) SetNotifier(n GameNotifier) {
+	s.notifier = n
 }
 
 // HealthCheck verifies that all dependencies are accessible.
@@ -713,6 +727,11 @@ func (s *Service) CreateGame(ctx context.Context, tgUserID int64, clubID int64, 
 		"game_type", game.GameType,
 		"created_by", tgUserID,
 	)
+
+	// Notify participants via the configured notifier (e.g., Telegram bot).
+	if s.notifier != nil {
+		s.notifier.NotifyGameCreated(ctx, tgUserID, clubID, gameID)
+	}
 
 	return game, nil
 }

@@ -16,6 +16,8 @@ import type {
   GameConfig,
   GameStatus,
   GameType,
+  GameParticipantSummary,
+  PlayerSummary,
 } from '../../types'
 
 // --- Backend response types (snake_case from API) ---
@@ -381,6 +383,151 @@ export function useUpdateBanker() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: gameKeys.detail(data.id) })
       queryClient.invalidateQueries({ queryKey: gameKeys.list(data.clubId) })
+    },
+  })
+}
+
+// --- Game Participants ---
+
+// Backend response types for game participants
+
+interface BackendPlayer {
+  id: number
+  first_name: string
+  last_name: string
+  nickname: string
+  tg_user_id?: number
+  phone_number?: string
+  email?: string
+  created_at: string
+  updated_at: string
+}
+
+interface BackendGameParticipant {
+  id: number
+  game_id: number
+  player_id: number
+  buy_in_count: number
+  rebuy_count: number
+  chips_end?: number
+  payout_amount?: number
+  place?: number
+  status: string
+  created_at: string
+  updated_at: string
+  player: BackendPlayer
+}
+
+function mapPlayer(player: BackendPlayer): PlayerSummary {
+  return {
+    id: player.id,
+    tgUserID: player.tg_user_id ?? 0,
+    firstName: player.first_name,
+    lastName: player.last_name,
+    nickname: player.nickname,
+    photoUrl: undefined,
+  }
+}
+
+function mapGameParticipant(p: BackendGameParticipant): GameParticipantSummary {
+  return {
+    player: mapPlayer(p.player),
+    buyInCount: p.buy_in_count,
+    rebuyCount: p.rebuy_count,
+    chipsEnd: p.chips_end,
+    payoutAmount: p.payout_amount,
+    place: p.place,
+    status: p.status as GameParticipantSummary['status'],
+  }
+}
+
+// Query keys for participants
+
+export const participantKeys = {
+  all: ['participants'] as const,
+  list: (gameId: number) => [...participantKeys.all, 'list', gameId] as const,
+}
+
+/**
+ * Fetch all participants for a game.
+ */
+export function useGameParticipants(gameId: number) {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: participantKeys.list(gameId),
+    queryFn: async () => {
+      const response = await apiClient.get<{ participants: BackendGameParticipant[] }>(
+        `/games/${gameId}/participants`,
+      )
+      return response.data.participants.map(mapGameParticipant)
+    },
+    enabled: !!gameId,
+  })
+}
+
+/**
+ * Accept a game invitation.
+ * The player must have an invited status for the game.
+ */
+export function useAcceptGameParticipation() {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (gameId: number) => {
+      const response = await apiClient.post<{ player: BackendPlayer }>(
+        `/games/${gameId}/participants/me/accept`,
+      )
+      return mapPlayer(response.data.player)
+    },
+    onSuccess: (_, gameId) => {
+      queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
+    },
+  })
+}
+
+/**
+ * Decline a game invitation.
+ * The player must have an invited or accepted status for the game.
+ */
+export function useDeclineGameParticipation() {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (gameId: number) => {
+      await apiClient.post(`/games/${gameId}/participants/me/decline`)
+      return gameId
+    },
+    onSuccess: (gameId) => {
+      queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
+    },
+  })
+}
+
+/**
+ * Confirm a player's accepted game invitation.
+ * Only owner/admin can confirm (PermManageGameParticipants).
+ */
+export function useConfirmGameParticipation() {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      gameId,
+      playerId,
+    }: {
+      gameId: number
+      playerId: number
+    }) => {
+      const response = await apiClient.post<{ player: BackendPlayer }>(
+        `/games/${gameId}/participants/${playerId}/confirm`,
+      )
+      return { gameId, player: mapPlayer(response.data.player) }
+    },
+    onSuccess: ({ gameId }) => {
+      queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
     },
   })
 }

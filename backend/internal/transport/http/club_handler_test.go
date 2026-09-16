@@ -266,9 +266,9 @@ func TestGetClub_OwnerRole(t *testing.T) {
 }
 
 func TestGetClub_MemberRole(t *testing.T) {
-	// Note: 'member' role does not have PermViewClub permission,
-	// so GetClub will return 403 for members. This test verifies
-	// that the handler correctly denies access for members.
+	// 'member' role now has PermViewClub permission,
+	// so GetClub will return 200 for members. This test verifies
+	// that the handler correctly allows access for members.
 	tgUserID := int64(12345)
 	player := &domain.Player{
 		ID:        1,
@@ -297,9 +297,9 @@ func TestGetClub_MemberRole(t *testing.T) {
 	handler, c, w := setupTestGetClub(t, player, member, club)
 	handler.GetClub(c)
 
-	// Member role does not have PermViewClub, so expect 403
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected status 403 for member role, got %d", w.Code)
+	// Member role now has PermViewClub, so expect 200
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for member role, got %d", w.Code)
 	}
 }
 

@@ -376,8 +376,8 @@ func (b *Bot) handleGameCreateConfirm(ctx context.Context, cb *tgbotapi.Callback
 	// Send notification to the club group chat.
 	b.sendGroupNotification(ctx, clubID, fmt.Sprintf("🎲 Создана новая игра #%d %s", createdGame.ID, createdGame.StartTime.Format("02.01.2006 15:04")))
 
-	// Send personal invitations to all active club members.
-	b.sendGameInvitations(ctx, cb.From.ID, clubID, createdGame.ID)
+	// Personal invitations to all active club members are sent by CreateGame
+	// via the GameNotifier interface (Bot.NotifyGameCreated).
 }
 
 // handleGameCreateCancel processes the "Отмена" button in the game creation screen.
@@ -987,6 +987,12 @@ func (b *Bot) handleGameBack(ctx context.Context, cb *tgbotapi.CallbackQuery) {
 
 	b.setState(cb.From.ID, stateIdle, 0)
 	b.editMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "Игра:", b.gameMenuKeyboard(ctx, clubID, gameID, cb.From.ID))
+}
+
+// NotifyGameCreated implements service.GameNotifier.
+// It sends personal invitations to all active club members for the newly created game.
+func (b *Bot) NotifyGameCreated(ctx context.Context, tgUserID, clubID, gameID int64) {
+	b.sendGameInvitations(ctx, tgUserID, clubID, gameID)
 }
 
 // sendGameInvitations sends personal messages to all active club members with

@@ -16,6 +16,8 @@ import type { ApiErrorCode } from '../api'
 
 /** Player identity and profile information. */
 export interface PlayerSummary {
+  /** Internal player ID. */
+  id: number
   /** Telegram user ID. */
   tgUserID: number
   /** First name. */
@@ -42,6 +44,8 @@ export interface ClubSummary {
   isOwner: boolean
   /** Whether current user is an admin. */
   isAdmin: boolean
+  /** Whether current user is a member. */
+  isMember: boolean
 }
 
 /** Game type. */

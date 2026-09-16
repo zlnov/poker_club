@@ -13,6 +13,7 @@ import { RouterProvider } from 'react-router-dom'
 import { AppProviders } from './app/providers'
 import { router } from './app/router'
 import '@mantine/core/styles.css'
+import '@mantine/dates/styles.css'
 import '@mantine/notifications/styles.css'
 import './styles/index.css'
 

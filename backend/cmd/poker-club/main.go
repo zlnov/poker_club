@@ -74,6 +74,9 @@ func run() error {
 			log.Error("failed to create telegram bot", "error", err)
 			return fmt.Errorf("failed to create telegram bot: %w", err)
 		}
+		// Wire the bot as the game notifier so that game creation
+		// sends personal invitations to all active club members.
+		svc.SetNotifier(bot)
 	}
 
 	// Register webhook handler on HTTP server (if bot is available)

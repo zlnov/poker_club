@@ -46,9 +46,10 @@ function mapClub(club: BackendClub): ClubSummary {
     id: club.id,
     name: club.name,
     tgChatId: club.tg_chat_id,
-    memberCount: 0, // Will be populated from statistics if needed
+    memberCount: 0,
     isOwner: false,
     isAdmin: false,
+    isMember: false,
   }
 }
 
@@ -60,6 +61,7 @@ function mapClubWithRole(club: BackendClubWithRole): ClubSummary {
     memberCount: 0,
     isOwner: club.is_owner,
     isAdmin: club.is_admin,
+    isMember: club.role === 'member',
   }
 }
 
