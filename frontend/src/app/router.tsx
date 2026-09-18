@@ -13,6 +13,9 @@
  *   ├── /clubs/:clubId/statistics
  *   ├── /clubs/:clubId/settings
  *   ├── /games/:gameId
+ *   │   ├── /games/:gameId/manage
+ *   │   ├── /games/:gameId/rebuy
+ *   │   └── /games/:gameId/chips
  *   └── /profile
  *
  * See 04_FE_SPEC.md section 11 (Routing).
@@ -29,6 +32,9 @@ import {
   ClubStatistics,
   ClubSettings,
   GamePage,
+  GameManagementPage,
+  GameRebuyPage,
+  GameChipsPage,
   ProfilePage,
 } from '../pages'
 import {
@@ -51,6 +57,9 @@ import {
  *   - /clubs/:clubId/statistics — Club statistics (protected)
  *   - /clubs/:clubId/settings — Club settings (protected)
  * - /games/:gameId — Game details (protected)
+ *   - /games/:gameId/manage — Game management (protected)
+ *   - /games/:gameId/rebuy — Rebuy management (protected)
+ *   - /games/:gameId/chips — Chips End management (protected)
  * - /profile — User profile (protected)
  */
 export const router = createBrowserRouter([
@@ -115,6 +124,18 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: <GamePage />,
+          },
+          {
+            path: 'manage',
+            element: <GameManagementPage />,
+          },
+          {
+            path: 'rebuy',
+            element: <GameRebuyPage />,
+          },
+          {
+            path: 'chips',
+            element: <GameChipsPage />,
           },
         ],
       },

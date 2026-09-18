@@ -1548,9 +1548,36 @@ func (s *Service) AddPlayerToGame(ctx context.Context, tgUserID int64, clubID in
 		return errors.New("игрок не является активным участником клуба")
 	}
 
-	// Check player is not already in the game.
+	// Check if player already has a game_participants record.
 	existing, _ := s.repos.GameParticipants.GetByGameAndPlayer(ctx, gameID, playerID)
 	if existing != nil {
+		// If player has invited/accepted/declined status, upgrade to confirmed with buy-in.
+		if existing.Status == "invited" || existing.Status == "accepted" || existing.Status == "declined" {
+			existing.Status = "confirmed"
+			existing.BuyInCount = 1
+			if err := s.repos.GameParticipants.Update(ctx, existing); err != nil {
+				return fmt.Errorf("failed to upgrade participant: %w", err)
+			}
+			// Record buy-in event.
+			buyInAmount := game.BuyInAmount
+			event := &domain.Event{
+				GameID:    gameID,
+				PlayerID:  playerID,
+				Type:      "buy_in",
+				NewValue:  &buyInAmount,
+				CreatedBy: member.ID,
+			}
+			if _, err := s.repos.Events.Create(ctx, event); err != nil {
+				s.log.Warn("failed to create buy-in event for upgraded player", "error", err)
+			}
+			s.log.Info("player upgraded to confirmed in game",
+				"game_id", gameID,
+				"player_id", playerID,
+				"tg_user_id", tgUserID,
+			)
+			return nil
+		}
+		// If already confirmed, return error.
 		return errors.New("игрок уже является участником этой игры")
 	}
 
@@ -2072,15 +2099,24 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		return fmt.Errorf("failed to get game participants: %w", err)
 	}
 
-	// Constraint 7.9: all players' results must be entered.
+	// Only confirmed participants are actual game participants.
+	// invited/accepted/declined participants are excluded from results.
+	confirmedParticipants := make([]*domain.GameParticipant, 0, len(participants))
 	for _, p := range participants {
+		if p.Status == "confirmed" {
+			confirmedParticipants = append(confirmedParticipants, p)
+		}
+	}
+
+	// Constraint 7.9: all confirmed players' results must be entered.
+	for _, p := range confirmedParticipants {
 		if p.ChipsEnd == nil {
 			return errors.New("не введены результаты всех игроков")
 		}
 	}
 
 	// Recalculate all results (payout, profit, ROI, place) and save them.
-	if err := s.recalculateGameResults(ctx, game, participants); err != nil {
+	if err := s.recalculateGameResults(ctx, game, confirmedParticipants); err != nil {
 		return fmt.Errorf("failed to recalculate game results: %w", err)
 	}
 

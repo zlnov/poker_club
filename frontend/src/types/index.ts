@@ -138,6 +138,12 @@ export interface GameDetails {
   createdAt: string
   /** Updated at timestamp. */
   updatedAt: string
+  /** Timer paused at (for cash_time games). */
+  timerPausedAt?: string
+  /** Timer paused duration in seconds. */
+  timerPausedDuration?: number
+  /** Whether timer notification has been sent. */
+  timerNotified?: boolean
 }
 
 /** Game configuration form values. */
@@ -184,12 +190,66 @@ export interface GameParticipantSummary {
   rebuyCount: number
   /** Ending chips (if game finished). */
   chipsEnd?: number
+  /** Current stack (from chips_set events, during active game). */
+  currentStack?: number
   /** Payout amount (if game finished). */
   payoutAmount?: number
   /** Place (if game finished). */
   place?: number
   /** Status (invited, accepted, declined, confirmed). */
   status: 'invited' | 'accepted' | 'declined' | 'confirmed'
+}
+
+/** Game event log entry. */
+export interface GameEvent {
+  /** Event ID. */
+  id: number
+  /** Game ID. */
+  gameId: number
+  /** Player ID (who performed the action). */
+  playerId: number
+  /** Event type (buy_in, rebuy, chips_set, correction). */
+  type: string
+  /** Old value (for corrections). */
+  oldValue?: number
+  /** New value. */
+  newValue?: number
+  /** Additional metadata. */
+  metadata?: Record<string, unknown>
+  /** Created at timestamp. */
+  createdAt: string
+  /** Created by (club member ID). */
+  createdBy: number
+}
+
+/** Game result for a single participant. */
+export interface GameResult {
+  /** Player ID. */
+  playerId: number
+  /** Buy-in count. */
+  buyInCount: number
+  /** Rebuy count. */
+  rebuyCount: number
+  /** Chips end. */
+  chipsEnd?: number
+  /** Payout amount. */
+  payoutAmount?: number
+  /** Place. */
+  place?: number
+  /** Status. */
+  status: string
+}
+
+/** Game bank check result. */
+export interface GameBankCheck {
+  /** Total bank (sum of all buy-in and rebuy amounts). */
+  totalBank: number
+  /** Total payout (sum of chips_end × chip_value). */
+  totalPayout: number
+  /** Difference (payout - bank). */
+  difference: number
+  /** Whether there's a mismatch. */
+  mismatch: boolean
 }
 
 /** Statistics for a player. */

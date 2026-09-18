@@ -32,6 +32,7 @@ import {
   NumberInput,
   Checkbox,
   Grid,
+  Table,
 } from '@mantine/core'
 import { DateTimePicker } from '@mantine/dates'
 import { useForm } from '@mantine/form'
@@ -61,11 +62,26 @@ import {
   LoadingState,
   ErrorState,
 } from '../components/ui'
-import { useGame, useStartGame, useCancelGame, useUpdateBanker, useUpdateGame, useGameParticipants, useAcceptGameParticipation, useDeclineGameParticipation, useConfirmGameParticipation } from '../features'
+import {
+  useGame,
+  useStartGame,
+  useCancelGame,
+  useUpdateBanker,
+  useUpdateGame,
+  useGameParticipants,
+  useAcceptGameParticipation,
+  useDeclineGameParticipation,
+  useConfirmGameParticipation,
+  useGameMonitor,
+  useFinishGame,
+  useRegisterRebuy,
+  useSetCurrentStack,
+} from '../features'
 import { useClub, useClubMembers } from '../features'
 import { useAuth } from '../auth'
 import { formatCurrency, formatDate, formatDuration } from '../utils'
 import { ApiClientError } from '../api'
+import type { GameBankCheck } from '../types'
 import { notifications } from '@mantine/notifications'
 import type { GameStatus, GameType, ClubMemberRole, GameConfig } from '../types'
 
@@ -244,7 +260,23 @@ export function GamePage() {
   const declineParticipation = useDeclineGameParticipation()
   const confirmParticipation = useConfirmGameParticipation()
 
+  // Phase 6: Active Game hooks
+  const { data: monitorData } = useGameMonitor(gameIdNum)
+  const finishGame = useFinishGame()
+  const registerRebuy = useRegisterRebuy()
+  const setCurrentStack = useSetCurrentStack()
+
   const isMobile = useMediaQuery('(max-width: 768px)')
+
+  // Active game state
+  const isActive = game?.status === 'active'
+  const canManageGameActions = canManageGame || isBanker
+
+  // Modal states for active game
+  const [currentStackModalOpen, setCurrentStackModalOpen] = useState(false)
+  const [currentStackValue, setCurrentStackValue] = useState<number>(0)
+  const [finishGameModalOpen, setFinishGameModalOpen] = useState(false)
+  const [rebuyPlayerId, setRebuyPlayerId] = useState<number | null>(null)
 
   // Build banker select options (active members only, excluding current banker)
   const bankerOptions = (members ?? [])
@@ -459,6 +491,38 @@ export function GamePage() {
           color: 'red',
         })
       }
+     }
+   }
+
+  // Compute bank check for finish game validation
+  function computeBankCheck(): GameBankCheck {
+    if (!game) {
+      return { totalBank: 0, totalPayout: 0, difference: 0, mismatch: false }
+    }
+    const buyInAmount = game.buyInAmount
+    const rebuyPrice = game.rebuyPrice ?? 0
+    const chipValue = game.chipValue
+
+    let totalBank = 0
+    let totalPayout = 0
+
+    const data = monitorData ?? { game, participants: participants ?? [] }
+    const participantList = data.participants.filter((p) => p.status === 'confirmed')
+
+    for (const p of participantList) {
+      const invested = p.buyInCount * buyInAmount + p.rebuyCount * rebuyPrice
+      totalBank += invested
+      if (p.chipsEnd !== undefined) {
+        totalPayout += p.chipsEnd * chipValue
+      }
+    }
+
+    const difference = totalPayout - totalBank
+    return {
+      totalBank,
+      totalPayout,
+      difference,
+      mismatch: Math.abs(difference) > 0.01,
     }
   }
 
@@ -848,6 +912,162 @@ export function GamePage() {
         ) : null
       })()}
 
+      {/* Active Game Section */}
+      {isActive && (
+        <>
+          {/* Game Timer */}
+          <Card mt="lg" padding="lg" radius="md" withBorder>
+            <Group justify="space-between" mb="md">
+              <Title order={4} mb={0}>
+                Game Timer
+              </Title>
+              <Badge
+                color={game.timerNotified ? 'yellow' : 'green'}
+                variant="light"
+              >
+                {game.timerNotified ? 'Timer Expired' : 'Running'}
+              </Badge>
+            </Group>
+            {game.durationSeconds && game.durationSeconds > 0 ? (
+              <GameTimer
+                startTime={game.startTime}
+                durationSeconds={game.durationSeconds}
+                timerPausedAt={game.timerPausedAt}
+                timerPausedDuration={game.timerPausedDuration}
+              />
+            ) : (
+              <Text size="sm" c="dimmed">
+                No time limit set for this game.
+              </Text>
+            )}
+          </Card>
+
+          {/* Game Management Actions (Banker/Owner/Admin only) */}
+          {canManageGameActions && (
+            <Card mt="lg" padding="lg" radius="md" withBorder>
+              <Title order={4} mb="md">
+                Game Management
+              </Title>
+              <Stack gap="sm">
+                <Button
+                  leftSection={<IconPlayerPlay size={16} />}
+                  onClick={() => navigate(`/games/${gameIdNum}/manage`)}
+                  fullWidth={isMobile}
+                >
+                  Войти в игру
+                </Button>
+              </Stack>
+            </Card>
+          )}
+
+          {/* Player Game View (Member) */}
+          {!canManageGameActions && (
+            <Card mt="lg" padding="lg" radius="md" withBorder>
+              <Title order={4} mb="md">
+                Мои данные
+              </Title>
+              {participants && (() => {
+                const myParticipant = participants.find(
+                  (p) => p.player.id === currentPlayerId,
+                )
+                if (!myParticipant) {
+                  return (
+                    <Text size="sm" c="dimmed">
+                      You are not a participant in this game.
+                    </Text>
+                  )
+                }
+                return (
+                  <Stack gap="sm">
+                    <Table
+                      variant={isMobile ? 'compact' : 'striped'}
+                      style={isMobile ? { fontSize: '0.85rem' } : undefined}
+                    >
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>Buy-in</Table.Th>
+                          <Table.Th>Rebuy</Table.Th>
+                          <Table.Th>Invested</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        <Table.Tr>
+                          <Table.Td>{myParticipant.buyInCount}</Table.Td>
+                          <Table.Td>{myParticipant.rebuyCount}</Table.Td>
+                          <Table.Td>
+                            {Math.round(
+                              myParticipant.buyInCount * game.buyInAmount +
+                                (myParticipant.rebuyCount *
+                                  (game.rebuyPrice ?? 0)),
+                            )}
+                          </Table.Td>
+                        </Table.Tr>
+                      </Table.Tbody>
+                    </Table>
+
+                    <Button
+                      leftSection={<IconCoin size={16} />}
+                      onClick={() => {
+                        setCurrentStackValue(0)
+                        setCurrentStackModalOpen(true)
+                      }}
+                      fullWidth={isMobile}
+                    >
+                      Ввести текущий стек
+                    </Button>
+
+                    <Title order={5} mb="xs">
+                      Данные соперников
+                    </Title>
+                    <Table
+                      variant={isMobile ? 'compact' : 'striped'}
+                      style={isMobile ? { fontSize: '0.85rem' } : undefined}
+                    >
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>Игрок</Table.Th>
+                          <Table.Th>Rebuy</Table.Th>
+                          <Table.Th>Invested</Table.Th>
+                          <Table.Th>Chips End</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {participants
+                          .filter((p) => p.player.id !== currentPlayerId && p.status === 'confirmed')
+                          .map((p) => (
+                            <Table.Tr key={p.player.id}>
+                              <Table.Td>
+                                {p.player.tgUserID || p.player.id}
+                              </Table.Td>
+                              <Table.Td>
+                                {p.rebuyCount} /{' '}
+                                {Math.round(
+                                  p.rebuyCount * (game.rebuyPrice ?? 0),
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                {Math.round(
+                                  p.buyInCount * game.buyInAmount +
+                                    p.rebuyCount * (game.rebuyPrice ?? 0),
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                {p.chipsEnd !== undefined
+                                  ? Math.round(p.chipsEnd)
+                                  : '—'}
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Stack>
+                )
+              })()}
+            </Card>
+          )}
+        </>
+      )}
+
       {/* Game Metadata */}
       <Card mt="lg" padding="lg" radius="md" withBorder>
         <Title order={4} mb="md">
@@ -1229,6 +1449,229 @@ export function GamePage() {
           </Group>
         </Stack>
       </Modal>
+
+      {/* Set Current Stack Modal (Member) */}
+      <Modal
+        opened={currentStackModalOpen}
+        onClose={() => setCurrentStackModalOpen(false)}
+        title="Ввести текущий стек"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <NumberInput
+            label="Current Stack"
+            placeholder="0"
+            value={currentStackValue}
+            onChange={(value) => setCurrentStackValue(Number(value) || 0)}
+            allowNegative={false}
+            min={0}
+            leftSection={<IconCoin size={16} />}
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="subtle"
+              onClick={() => setCurrentStackModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  await setCurrentStack.mutateAsync({
+                    gameId: gameIdNum,
+                    stack: currentStackValue,
+                  })
+                  notifications.show({
+                    title: 'Current Stack Set',
+                    message: 'Current stack has been recorded.',
+                    color: 'green',
+                  })
+                  setCurrentStackModalOpen(false)
+                  refetch()
+                } catch (err) {
+                  if (err instanceof ApiClientError) {
+                    notifications.show({
+                      title: 'Failed to set current stack',
+                      message: err.message,
+                      color: 'red',
+                    })
+                  }
+                }
+              }}
+              loading={setCurrentStack.isPending}
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Finish Game Confirmation Modal */}
+      <Modal
+        opened={finishGameModalOpen}
+        onClose={() => setFinishGameModalOpen(false)}
+        title="Finish Game"
+        centered
+        size="md"
+      >
+        <Stack gap="md">
+          {(() => {
+            const bankCheck = computeBankCheck()
+            if (bankCheck.mismatch) {
+              return (
+                <>
+                  <Alert color="red" variant="light" title="Balance Mismatch">
+                    <Stack gap="xs">
+                      <Text>Invested: {Math.round(bankCheck.totalBank)}</Text>
+                      <Text>Chips End: {Math.round(bankCheck.totalPayout)}</Text>
+                      <Text>Difference: {Math.round(bankCheck.difference)}</Text>
+                    </Stack>
+                  </Alert>
+                  <Text size="sm">
+                    The game can still be finished, but the results may be
+                    incorrect.
+                  </Text>
+                  <Group justify="flex-end" gap="sm">
+                    <Button
+                      variant="subtle"
+                      onClick={() => setFinishGameModalOpen(false)}
+                    >
+                      Return to game
+                    </Button>
+                    <Button
+                      color="red"
+                      onClick={async () => {
+                        try {
+                          await finishGame.mutateAsync(gameIdNum)
+                          notifications.show({
+                            title: 'Game Finished',
+                            message: 'The game has been finished successfully.',
+                            color: 'green',
+                          })
+                          setFinishGameModalOpen(false)
+                          refetch()
+                        } catch (err) {
+                          if (err instanceof ApiClientError) {
+                            notifications.show({
+                              title: 'Failed to finish game',
+                              message: err.message,
+                              color: 'red',
+                            })
+                          }
+                        }
+                      }}
+                      loading={finishGame.isPending}
+                    >
+                      Finish anyway
+                    </Button>
+                  </Group>
+                </>
+              )
+            }
+            return (
+              <>
+                <Alert color="green" variant="light" title="Game Balance Correct">
+                  <Stack gap="xs">
+                    <Text>Total Invested: {Math.round(bankCheck.totalBank)}</Text>
+                    <Text>Total Chips End: {Math.round(bankCheck.totalPayout)}</Text>
+                    <Text>Total Payout: {Math.round(bankCheck.totalPayout)}</Text>
+                  </Stack>
+                </Alert>
+                <Group justify="flex-end" gap="sm">
+                  <Button
+                    variant="subtle"
+                    onClick={() => setFinishGameModalOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    color="green"
+                    onClick={async () => {
+                      try {
+                        await finishGame.mutateAsync(gameIdNum)
+                        notifications.show({
+                          title: 'Game Finished',
+                          message:
+                            'The game has been finished successfully.',
+                          color: 'green',
+                        })
+                        setFinishGameModalOpen(false)
+                        refetch()
+                      } catch (err) {
+                        if (err instanceof ApiClientError) {
+                          notifications.show({
+                            title: 'Failed to finish game',
+                            message: err.message,
+                            color: 'red',
+                          })
+                        }
+                      }
+                    }}
+                    loading={finishGame.isPending}
+                  >
+                    Finish Game
+                  </Button>
+                </Group>
+              </>
+            )
+          })()}
+        </Stack>
+      </Modal>
+
+      {/* Add Rebuy Modal */}
+      <Modal
+        opened={rebuyPlayerId !== null}
+        onClose={() => setRebuyPlayerId(null)}
+        title="Add Rebuy"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>
+            Add a rebuy for this player?
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="subtle"
+              onClick={() => setRebuyPlayerId(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="green"
+              onClick={async () => {
+                if (rebuyPlayerId) {
+                  try {
+                    await registerRebuy.mutateAsync({
+                      gameId: gameIdNum,
+                      playerId: rebuyPlayerId,
+                    })
+                    notifications.show({
+                      title: 'Rebuy Registered',
+                      message: 'Rebuy has been registered.',
+                      color: 'green',
+                    })
+                    setRebuyPlayerId(null)
+                    refetch()
+                  } catch (err) {
+                    if (err instanceof ApiClientError) {
+                      notifications.show({
+                        title: 'Failed to register rebuy',
+                        message: err.message,
+                        color: 'red',
+                      })
+                    }
+                  }
+                }
+              }}
+              loading={registerRebuy.isPending}
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </PageContainer>
   )
 }
@@ -1245,4 +1688,67 @@ function getGameTypeColor(type: GameType): string {
     default:
       return 'gray'
   }
+}
+
+/**
+ * Game timer component for Active Game.
+ * Displays a countdown based on the game's start time and duration.
+ * Backend is the source of truth; this is a local visual countdown.
+ */
+function GameTimer({
+  startTime,
+  durationSeconds,
+  timerPausedAt,
+  timerPausedDuration,
+}: {
+  startTime: string
+  durationSeconds: number
+  timerPausedAt?: string
+  timerPausedDuration?: number
+}) {
+  const [timeLeft, setTimeLeft] = useState<string>('')
+
+  useEffect(() => {
+    const updateTimer = () => {
+      const start = new Date(startTime).getTime()
+      const now = Date.now()
+      const elapsed = (now - start) / 1000
+
+      // Account for paused duration
+      let pausedDuration = 0
+      if (timerPausedDuration) {
+        pausedDuration = timerPausedDuration
+      }
+      // If timer is currently paused, add time since pause
+      if (timerPausedAt) {
+        const pauseStart = new Date(timerPausedAt).getTime()
+        pausedDuration += (now - pauseStart) / 1000
+      }
+
+      const remaining = durationSeconds - elapsed + pausedDuration
+      if (remaining <= 0) {
+        setTimeLeft('00:00')
+      } else {
+        const mins = Math.floor(remaining / 60)
+        const secs = Math.floor(remaining % 60)
+        setTimeLeft(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`)
+      }
+    }
+
+    updateTimer()
+    const interval = setInterval(updateTimer, 1000)
+    return () => clearInterval(interval)
+  }, [startTime, durationSeconds, timerPausedAt, timerPausedDuration])
+
+  return (
+    <Group gap="sm" align="center">
+      <IconClock size={24} />
+      <Text size="xl" fw={700} ff="monospace">
+        {timeLeft}
+      </Text>
+      <Text size="sm" c="dimmed">
+        remaining
+      </Text>
+    </Group>
+  )
 }

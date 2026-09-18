@@ -78,13 +78,23 @@ type updateGameRequest struct {
 
 // chipsRequest represents the request body for setting chips end.
 type chipsRequest struct {
-	ChipsEnd float64 `json:"chips_end" binding:"required"`
+	ChipsEnd float64 `json:"chips_end"`
+}
+
+// fixRebuyRequest represents the request body for fixing rebuy count.
+type fixRebuyRequest struct {
+	RebuyCount int `json:"rebuy_count" binding:"required"`
+}
+
+// stackRequest represents the request body for setting current stack.
+type stackRequest struct {
+	Stack float64 `json:"stack"`
 }
 
 // correctResultsRequest represents the request body for correcting game results.
 type correctResultsRequest struct {
 	PlayerID int64   `json:"player_id" binding:"required"`
-	ChipsEnd float64 `json:"chips_end" binding:"required"`
+	ChipsEnd float64 `json:"chips_end"`
 }
 
 // bankerRequest represents the request body for assigning a banker.
@@ -443,6 +453,19 @@ func (h *GameHandler) ListGameParticipants(c *gin.Context) {
 		return
 	}
 
+	// Get current stacks from events.
+	currentStacks, err := h.svc.GetCurrentStacks(c.Request.Context(), tgUserID, game.ClubID, gameID)
+	if err != nil {
+		currentStacks = make(map[int64]float64)
+	}
+
+	// Add current_stack to each participant.
+	for _, p := range participants {
+		if stack, ok := currentStacks[p.PlayerID]; ok {
+			p.CurrentStack = &stack
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"participants": serializeGameParticipants(participants),
 	})
@@ -709,6 +732,50 @@ func (h *GameHandler) RegisterRebuy(c *gin.Context) {
 	})
 }
 
+// FixRebuy handles POST /api/v1/games/{gameId}/participants/{playerId}/rebuy/fix.
+// Corrects the rebuy count for a game participant.
+func (h *GameHandler) FixRebuy(c *gin.Context) {
+	tgUserID, ok := getTgUserIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
+		return
+	}
+
+	gameID, err := parseIDParam(c, "gameId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid game ID")
+		return
+	}
+
+	playerID, err := parseIDParam(c, "playerId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid player ID")
+		return
+	}
+
+	var req fixRebuyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid request: "+err.Error())
+		return
+	}
+
+	// Get the game to resolve clubID.
+	game, err := h.svc.GetGameByID(c.Request.Context(), tgUserID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	if err := h.svc.FixRebuy(c.Request.Context(), tgUserID, game.ClubID, gameID, playerID, req.RebuyCount); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "rebuy corrected",
+	})
+}
+
 // SetChipsEnd handles POST /api/v1/games/{gameId}/participants/{playerId}/chips.
 // Sets the final chips count for a game participant.
 func (h *GameHandler) SetChipsEnd(c *gin.Context) {
@@ -748,8 +815,47 @@ func (h *GameHandler) SetChipsEnd(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+ 	c.JSON(http.StatusOK, gin.H{
 		"message": "chips end set",
+	})
+}
+
+// SetCurrentStack handles POST /api/v1/games/{gameId}/participants/me/stack.
+// Allows a player to update their own current chip stack during an active game.
+// The current stack is stored as a chips_set event in the events table.
+func (h *GameHandler) SetCurrentStack(c *gin.Context) {
+	tgUserID, ok := getTgUserIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
+		return
+	}
+
+	gameID, err := parseIDParam(c, "gameId")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid game ID")
+		return
+	}
+
+	var req stackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid request: "+err.Error())
+		return
+	}
+
+	// Get the game to resolve clubID.
+	game, err := h.svc.GetGameByID(c.Request.Context(), tgUserID, gameID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	if err := h.svc.UpdateCurrentStack(c.Request.Context(), tgUserID, game.ClubID, gameID, req.Stack); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "current stack set",
 	})
 }
 
@@ -868,6 +974,19 @@ func (h *GameHandler) GetGameMonitor(c *gin.Context) {
 		return
 	}
 
+	// Get current stacks from events.
+	currentStacks, err := h.svc.GetCurrentStacks(c.Request.Context(), tgUserID, game.ClubID, gameID)
+	if err != nil {
+		currentStacks = make(map[int64]float64)
+	}
+
+	// Add current_stack to each participant.
+	for _, p := range participants {
+		if stack, ok := currentStacks[p.PlayerID]; ok {
+			p.CurrentStack = &stack
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"game":       serializeGame(g),
 		"participants": serializeGameParticipants(participants),
@@ -962,6 +1081,7 @@ func serializeGameParticipant(p *domain.GameParticipantWithPlayer) gin.H {
 		"buy_in_count":  p.BuyInCount,
 		"rebuy_count":   p.RebuyCount,
 		"chips_end":     p.ChipsEnd,
+		"current_stack": p.CurrentStack,
 		"payout_amount": p.PayoutAmount,
 		"place":         p.Place,
 		"status":        p.Status,

@@ -91,7 +91,8 @@ type GameParticipant struct {
 // GameParticipantWithPlayer represents a game participant with their associated player info.
 type GameParticipantWithPlayer struct {
 	GameParticipant
-	Player Player
+	Player        Player
+	CurrentStack  *float64 // current chip stack from chips_set events (not persisted in game_participants table)
 }
 
 // Event represents an entry in the event log.
