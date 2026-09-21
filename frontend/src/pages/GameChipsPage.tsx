@@ -31,10 +31,7 @@ import {
 } from '@mantine/core'
 import { IconArrowLeft, IconChevronRight } from '@tabler/icons-react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  PageContainer,
-  PageHeader,
-} from '../components/ui'
+import { PageContainer, PageHeader } from '../components/ui'
 import {
   useGame,
   useGameMonitor,
@@ -75,7 +72,9 @@ export function GameChipsPage() {
   // Use monitor data if available (has full participant info), otherwise use participants
   const displayParticipants = monitorData?.participants ?? participants ?? []
   // Only confirmed participants are shown in game data tables
-  const confirmedParticipants = displayParticipants.filter((p) => p.status === 'confirmed')
+  const confirmedParticipants = displayParticipants.filter(
+    (p) => p.status === 'confirmed',
+  )
 
   const handleSetChipsEnd = async () => {
     if (!chipsEndPlayerId) return
@@ -139,20 +138,36 @@ export function GameChipsPage() {
         </Title>
         <Stack gap="sm">
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Club</Text>
-            <Text size="sm" fw={500}>{club?.name ?? '—'}</Text>
+            <Text size="sm" c="dimmed">
+              Club
+            </Text>
+            <Text size="sm" fw={500}>
+              {club?.name ?? '—'}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Game ID</Text>
-            <Text size="sm" fw={500}>{game.id}</Text>
+            <Text size="sm" c="dimmed">
+              Game ID
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.id}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Type</Text>
-            <Text size="sm" fw={500}>{game.gameType}</Text>
+            <Text size="sm" c="dimmed">
+              Type
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.gameType}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Status</Text>
-            <Badge color="green" variant="light">{game.status}</Badge>
+            <Text size="sm" c="dimmed">
+              Status
+            </Text>
+            <Badge color="green" variant="light">
+              {game.status}
+            </Badge>
           </Group>
         </Stack>
       </Card>
@@ -163,8 +178,12 @@ export function GameChipsPage() {
           Chips End Configuration
         </Title>
         <Group gap="sm" justify="space-between">
-          <Text size="sm" c="dimmed">Chip Value</Text>
-          <Text size="sm" fw={500}>{chipValue}</Text>
+          <Text size="sm" c="dimmed">
+            Chip Value
+          </Text>
+          <Text size="sm" fw={500}>
+            {chipValue}
+          </Text>
         </Group>
       </Card>
 
@@ -185,21 +204,26 @@ export function GameChipsPage() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>
-                      <Text size="xs" c="dimmed">Игрок</Text>
+                      <Text size="xs" c="dimmed">
+                        Игрок
+                      </Text>
                     </Table.Th>
                     <Table.Th ta="center">
-                      <Text size="xs" c="dimmed">Invested</Text>
+                      <Text size="xs" c="dimmed">
+                        Invested
+                      </Text>
                     </Table.Th>
                     <Table.Th ta="center">
-                      <Text size="xs" c="dimmed">Chips End</Text>
+                      <Text size="xs" c="dimmed">
+                        Chips End
+                      </Text>
                     </Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {confirmedParticipants.map((p) => {
                     const invested =
-                      p.buyInCount * buyInAmount +
-                      p.rebuyCount * rebuyPrice
+                      p.buyInCount * buyInAmount + p.rebuyCount * rebuyPrice
                     return (
                       <Table.Tr key={p.player.id}>
                         <Table.Td>
@@ -207,9 +231,7 @@ export function GameChipsPage() {
                             .filter(Boolean)
                             .join(' ') || p.player.nickname}
                         </Table.Td>
-                        <Table.Td ta="center">
-                          {Math.round(invested)}
-                        </Table.Td>
+                        <Table.Td ta="center">{Math.round(invested)}</Table.Td>
                         <Table.Td ta="center">
                           {p.chipsEnd !== undefined ? (
                             <Text
@@ -261,17 +283,26 @@ export function GameChipsPage() {
                     <Text fw={500}>Participants</Text>
                   </Accordion.Control>
                   <Accordion.Panel>
-                    <Table variant="compact" styles={{ td: { padding: '0.1rem' } }}>
+                    <Table
+                      variant="compact"
+                      styles={{ td: { padding: '0.1rem' } }}
+                    >
                       <Table.Thead>
                         <Table.Tr>
                           <Table.Th ta="center">
-                            <Text size="xs" c="dimmed">Игрок</Text>
+                            <Text size="xs" c="dimmed">
+                              Игрок
+                            </Text>
                           </Table.Th>
                           <Table.Th ta="center">
-                            <Text size="xs" c="dimmed">Invested</Text>
+                            <Text size="xs" c="dimmed">
+                              Invested
+                            </Text>
                           </Table.Th>
                           <Table.Th ta="center">
-                            <Text size="xs" c="dimmed">Chips End</Text>
+                            <Text size="xs" c="dimmed">
+                              Chips End
+                            </Text>
                           </Table.Th>
                         </Table.Tr>
                       </Table.Thead>
@@ -348,10 +379,7 @@ export function GameChipsPage() {
             min={0}
           />
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              onClick={() => setChipsEndPlayerId(null)}
-            >
+            <Button variant="subtle" onClick={() => setChipsEndPlayerId(null)}>
               Cancel
             </Button>
             <Button

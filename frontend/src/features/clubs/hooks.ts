@@ -39,6 +39,18 @@ interface BackendClubStatistics {
   average_game_duration: number
 }
 
+interface BackendClubMemberStatistics {
+  player_id: number
+  player_name: string
+  games: number
+  total_invested: number
+  profit: number
+  roi: number
+  winrate: number
+  avg_place: number
+  games_won: number
+}
+
 // --- Mappers ---
 
 function mapClub(club: BackendClub): ClubSummary {
@@ -151,6 +163,36 @@ export function useClubStatistics(clubId: number) {
         `/clubs/${clubId}/statistics`,
       )
       return mapClubStatistics(response.data)
+    },
+    enabled: !!clubId,
+  })
+}
+
+/**
+ * Fetch club member statistics filtered by game_type.
+ */
+export function useClubMemberStatistics(
+  clubId: number,
+  gameType: 'cash' | 'tournament' = 'cash',
+) {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: [...clubKeys.statistics(clubId), 'members', gameType],
+    queryFn: async () => {
+      const response = await apiClient.get<{
+        members: BackendClubMemberStatistics[]
+      }>(`/clubs/${clubId}/statistics/members?game_type=${gameType}`)
+      return response.data.members.map((m) => ({
+        playerId: m.player_id,
+        playerName: m.player_name,
+        games: m.games,
+        totalInvested: m.total_invested,
+        profit: m.profit,
+        roi: m.roi,
+        winrate: m.winrate,
+        avgPlace: m.avg_place,
+        gamesWon: m.games_won,
+      }))
     },
     enabled: !!clubId,
   })

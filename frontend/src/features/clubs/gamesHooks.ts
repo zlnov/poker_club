@@ -67,10 +67,7 @@ export const gameKeys = {
  * - "cash" without duration → "cash_open"
  * - "tournament" → "tournament"
  */
-function mapGameType(
-  backendType: string,
-  durationSeconds?: number,
-): GameType {
+function mapGameType(backendType: string, durationSeconds?: number): GameType {
   if (backendType === 'tournament') {
     return 'tournament'
   }
@@ -311,10 +308,9 @@ export function useUpdateGame() {
         body.ranking_secondary = config.rankingSecondary
       }
 
-      const response = await apiClient.patch<BackendGame>(
-        `/games/${gameId}`,
-        { body },
-      )
+      const response = await apiClient.patch<BackendGame>(`/games/${gameId}`, {
+        body,
+      })
       return mapGameDetails(response.data)
     },
     onSuccess: (data) => {
@@ -469,9 +465,9 @@ export function useGameParticipants(gameId: number) {
   return useQuery({
     queryKey: participantKeys.list(gameId),
     queryFn: async () => {
-      const response = await apiClient.get<{ participants: BackendGameParticipant[] }>(
-        `/games/${gameId}/participants`,
-      )
+      const response = await apiClient.get<{
+        participants: BackendGameParticipant[]
+      }>(`/games/${gameId}/participants`)
       return response.data.participants.map(mapGameParticipant)
     },
     enabled: !!gameId,
@@ -565,12 +561,20 @@ interface BackendGameEvent {
 
 interface BackendGameResult {
   player_id: number
+  player_name: string
   buy_in_count: number
   rebuy_count: number
+  buy_in_amount: number
+  rebuy_amount: number
+  total_invested: number
   chips_end?: number
   payout_amount?: number
+  profit: number
+  roi: number
   place?: number
   status: string
+  game_type?: string
+  start_time?: string
 }
 
 // Query keys for active game
@@ -661,12 +665,20 @@ export function useGameResults(gameId: number) {
         game: mapGameDetails(response.data.game),
         results: response.data.results.map((r) => ({
           playerId: r.player_id,
+          playerName: r.player_name,
           buyInCount: r.buy_in_count,
           rebuyCount: r.rebuy_count,
+          buyInAmount: r.buy_in_amount,
+          rebuyAmount: r.rebuy_amount,
+          totalInvested: r.total_invested,
           chipsEnd: r.chips_end,
           payoutAmount: r.payout_amount,
+          profit: r.profit,
+          roi: r.roi,
           place: r.place,
           status: r.status,
+          gameType: r.game_type,
+          startTime: r.start_time,
         })),
       }
     },
@@ -689,10 +701,10 @@ export function useFinishGame() {
       return gameId
     },
     onSuccess: (gameId) => {
-      queryClient.invalidateQueries({ queryKey: gameKeys.detail(gameId) })
-      queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
-      queryClient.invalidateQueries({ queryKey: monitorKeys.detail(gameId) })
-      queryClient.invalidateQueries({ queryKey: resultKeys.detail(gameId) })
+    queryClient.invalidateQueries({ queryKey: gameKeys.detail(gameId) })
+    queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
+    // queryClient.invalidateQueries({ queryKey: monitorKeys.detail(gameId) })
+    queryClient.invalidateQueries({ queryKey: resultKeys.detail(gameId) })
     },
   })
 }
@@ -768,9 +780,12 @@ export function useFixRebuy() {
       playerId: number
       rebuyCount: number
     }) => {
-      await apiClient.post(`/games/${gameId}/participants/${playerId}/rebuy/fix`, {
-        body: { rebuy_count: rebuyCount },
-      })
+      await apiClient.post(
+        `/games/${gameId}/participants/${playerId}/rebuy/fix`,
+        {
+          body: { rebuy_count: rebuyCount },
+        },
+      )
       return { gameId, playerId }
     },
     onSuccess: ({ gameId }) => {
@@ -865,9 +880,133 @@ export function useAdjustGameResults() {
       return { gameId, playerId }
     },
     onSuccess: ({ gameId }) => {
-      queryClient.invalidateQueries({ queryKey: resultKeys.detail(gameId) })
       queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
+      queryClient.invalidateQueries({ queryKey: monitorKeys.detail(gameId) })
     },
+  })
+}
+
+// --- Player Statistics ---
+
+interface BackendPlayerStatistics {
+  total_games: number
+  total_buy_in_amount: number
+  total_rebuy_amount: number
+  total_rebuy_count: number
+  total_invested: number
+  total_chips: number
+  total_profit: number
+  biggest_win: number
+  biggest_loss: number
+  games_won: number
+  podiums: number
+  roi: number
+  itm: number
+  total_buy_in_count: number
+  winrate: number
+  avg_place: number
+  games_in_profit: number
+}
+
+/**
+ * Fetch player statistics filtered by game_type.
+ * Uses GET /players/{playerId}/statistics?clubId=X&game_type=Y
+ */
+export function usePlayerStatistics(
+  playerId: number,
+  clubId: number,
+  gameType: 'cash' | 'tournament' = 'cash',
+) {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: ['player-statistics', playerId, clubId, gameType],
+    queryFn: async () => {
+      const response = await apiClient.get<BackendPlayerStatistics>(
+        `/players/${playerId}/statistics?clubId=${clubId}&game_type=${gameType}`,
+      )
+      return {
+        totalGames: response.data.total_games,
+        totalBuyInAmount: response.data.total_buy_in_amount,
+        totalRebuyAmount: response.data.total_rebuy_amount,
+        totalRebuyCount: response.data.total_rebuy_count,
+        totalInvested: response.data.total_invested,
+        totalChips: response.data.total_chips,
+        totalProfit: response.data.total_profit,
+        biggestWin: response.data.biggest_win,
+        biggestLoss: response.data.biggest_loss,
+        gamesWon: response.data.games_won,
+        podiums: response.data.podiums,
+        roi: response.data.roi,
+        itm: response.data.itm,
+        totalBuyInCount: response.data.total_buy_in_count,
+        winrate: response.data.winrate,
+        avgPlace: response.data.avg_place,
+        gamesInProfit: response.data.games_in_profit,
+      }
+    },
+    enabled: !!playerId && !!clubId,
+  })
+}
+
+// --- Player Game History ---
+
+interface BackendPlayerGameHistory {
+  game_id: number
+  game_name: string
+  game_type?: string
+  start_time?: string
+  player_id: number
+  player_name: string
+  place?: number
+  buy_in_count: number
+  rebuy_count: number
+  buy_in_amount: number
+  rebuy_amount: number
+  total_invested: number
+  chips_end?: number
+  payout_amount?: number
+  profit: number
+  roi: number
+  status: string
+}
+
+/**
+ * Fetch player game history filtered by game_type.
+ * Uses GET /players/{playerId}/history?clubId=X&game_type=Y
+ */
+export function usePlayerGameHistory(
+  playerId: number,
+  clubId: number,
+  gameType: 'cash' | 'tournament' = 'cash',
+) {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: ['player-history', playerId, clubId, gameType],
+    queryFn: async () => {
+      const response = await apiClient.get<{
+        history: BackendPlayerGameHistory[]
+      }>(`/players/${playerId}/history?clubId=${clubId}&game_type=${gameType}`)
+      return response.data.history.map((h) => ({
+        gameId: h.game_id,
+        gameName: h.game_name,
+        gameType: h.game_type,
+        startTime: h.start_time,
+        playerId: h.player_id,
+        playerName: h.player_name,
+        place: h.place,
+        buyInCount: h.buy_in_count,
+        rebuyCount: h.rebuy_count,
+        buyInAmount: h.buy_in_amount,
+        rebuyAmount: h.rebuy_amount,
+        totalInvested: h.total_invested,
+        chipsEnd: h.chips_end,
+        payoutAmount: h.payout_amount,
+        profit: h.profit,
+        roi: h.roi,
+        status: h.status,
+      }))
+    },
+    enabled: !!playerId && !!clubId,
   })
 }
 

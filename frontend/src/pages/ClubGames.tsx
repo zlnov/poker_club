@@ -201,15 +201,9 @@ export function ClubGames() {
     refetch,
   } = useClubGames(clubIdNum)
 
-  const {
-    data: members,
-    isLoading: membersLoading,
-  } = useClubMembers(clubIdNum)
+  const { data: members, isLoading: membersLoading } = useClubMembers(clubIdNum)
 
-  const {
-    mutate: createGame,
-    isPending: isCreating,
-  } = useCreateGame()
+  const { mutate: createGame, isPending: isCreating } = useCreateGame()
 
   // Build banker select options from active club members
   const bankerOptions = (members ?? [])
@@ -245,11 +239,10 @@ export function ClubGames() {
         value <= 0 ? 'Chip value must be greater than 0' : null,
       buyInAmount: (value) =>
         value < 0 ? 'Buy-in amount cannot be negative' : null,
-      minPlayers: (value) =>
-        value < 1 ? 'Minimum 1 player required' : null,
-      maxPlayers: (value) =>
-        value < 1 ? 'Maximum 1 player required' : null,
-      rankingPrimary: (value) => (!value ? 'Ranking primary is required' : null),
+      minPlayers: (value) => (value < 1 ? 'Minimum 1 player required' : null),
+      maxPlayers: (value) => (value < 1 ? 'Maximum 1 player required' : null),
+      rankingPrimary: (value) =>
+        !value ? 'Ranking primary is required' : null,
       bankerId: (value) =>
         !value || value <= 0 ? 'Banker must be selected' : null,
     },
@@ -412,7 +405,8 @@ export function ClubGames() {
                   <Group gap="xs">
                     <IconCash size={16} />
                     <Text size="sm">
-                      Rebuy: {formatCurrency(game.rebuyPrice ?? 0, game.currency)}
+                      Rebuy:{' '}
+                      {formatCurrency(game.rebuyPrice ?? 0, game.currency)}
                     </Text>
                   </Group>
                 )}

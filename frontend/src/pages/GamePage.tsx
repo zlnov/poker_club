@@ -31,6 +31,7 @@ import {
   Alert,
   NumberInput,
   Checkbox,
+  SimpleGrid,
   Grid,
   Table,
 } from '@mantine/core'
@@ -76,6 +77,7 @@ import {
   useFinishGame,
   useRegisterRebuy,
   useSetCurrentStack,
+  useGameResults,
 } from '../features'
 import { useClub, useClubMembers } from '../features'
 import { useAuth } from '../auth'
@@ -84,6 +86,8 @@ import { ApiClientError } from '../api'
 import type { GameBankCheck } from '../types'
 import { notifications } from '@mantine/notifications'
 import type { GameStatus, GameType, ClubMemberRole, GameConfig } from '../types'
+import { GameResultsTable } from '../components/statistics/GameResultsTable'
+import { GameResultsMobile } from '../components/statistics/GameResultsMobile'
 
 // --- Status helpers ---
 
@@ -130,10 +134,7 @@ function getGameTypeLabel(type: GameType): string {
 /**
  * Maps a backend game_type to a frontend GameType.
  */
-function mapGameType(
-  backendType: string,
-  durationSeconds?: number,
-): GameType {
+function mapGameType(backendType: string, durationSeconds?: number): GameType {
   if (backendType === 'tournament') {
     return 'tournament'
   }
@@ -228,13 +229,7 @@ export function GamePage() {
   const [adjustGameOpen, setAdjustGameOpen] = useState(false)
   const [selectedBankerId, setSelectedBankerId] = useState<number | null>(null)
 
-  const {
-    data: game,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useGame(gameIdNum)
+  const { data: game, isLoading, isError, error, refetch } = useGame(gameIdNum)
 
   const { data: club } = useClub(game?.clubId ?? 0)
   const { data: members } = useClubMembers(game?.clubId ?? 0)
@@ -244,9 +239,7 @@ export function GamePage() {
   const canManageGame = isOwner || isAdmin
 
   // Check if current user is the banker
-  const currentMember = members?.find(
-    (m) => m.playerId === currentPlayerId,
-  )
+  const currentMember = members?.find((m) => m.playerId === currentPlayerId)
   const isBanker = currentMember?.clubMemberId === game?.bankerId
 
   const canStartGame = canManageGame || isBanker
@@ -265,6 +258,9 @@ export function GamePage() {
   const finishGame = useFinishGame()
   const registerRebuy = useRegisterRebuy()
   const setCurrentStack = useSetCurrentStack()
+
+  // Phase 7: Game Results hook (for finished games)
+  const { data: gameResultsData } = useGameResults(gameIdNum)
 
   const isMobile = useMediaQuery('(max-width: 768px)')
 
@@ -288,9 +284,7 @@ export function GamePage() {
     }))
 
   // Resolve banker name from club members
-  const bankerMember = members?.find(
-    (m) => m.clubMemberId === game?.bankerId,
-  )
+  const bankerMember = members?.find((m) => m.clubMemberId === game?.bankerId)
   const bankerName = bankerMember
     ? formatMemberName(bankerMember)
     : `Banker #${game?.bankerId ?? '—'}`
@@ -326,11 +320,10 @@ export function GamePage() {
         value <= 0 ? 'Chip value must be greater than 0' : null,
       buyInAmount: (value) =>
         value < 0 ? 'Buy-in amount cannot be negative' : null,
-      minPlayers: (value) =>
-        value < 1 ? 'Minimum 1 player required' : null,
-      maxPlayers: (value) =>
-        value < 1 ? 'Maximum 1 player required' : null,
-      rankingPrimary: (value) => (!value ? 'Ranking primary is required' : null),
+      minPlayers: (value) => (value < 1 ? 'Minimum 1 player required' : null),
+      maxPlayers: (value) => (value < 1 ? 'Maximum 1 player required' : null),
+      rankingPrimary: (value) =>
+        !value ? 'Ranking primary is required' : null,
       bankerId: (value) =>
         !value || value <= 0 ? 'Banker must be selected' : null,
     },
@@ -491,8 +484,8 @@ export function GamePage() {
           color: 'red',
         })
       }
-     }
-   }
+    }
+  }
 
   // Compute bank check for finish game validation
   function computeBankCheck(): GameBankCheck {
@@ -507,7 +500,9 @@ export function GamePage() {
     let totalPayout = 0
 
     const data = monitorData ?? { game, participants: participants ?? [] }
-    const participantList = data.participants.filter((p) => p.status === 'confirmed')
+    const participantList = data.participants.filter(
+      (p) => p.status === 'confirmed',
+    )
 
     for (const p of participantList) {
       const invested = p.buyInCount * buyInAmount + p.rebuyCount * rebuyPrice
@@ -572,11 +567,7 @@ export function GamePage() {
         title="Game Details"
         description={getGameTypeLabel(gameType!)}
         action={
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => navigate(-1)}
-          >
+          <Button variant="subtle" size="sm" onClick={() => navigate(-1)}>
             Back
           </Button>
         }
@@ -592,7 +583,11 @@ export function GamePage() {
             </Title>
           </Group>
           <Group gap="xs">
-            <Badge color={getStatusColor(game.status)} variant="light" size="lg">
+            <Badge
+              color={getStatusColor(game.status)}
+              variant="light"
+              size="lg"
+            >
               {game.status}
             </Badge>
             <Badge color={getGameTypeColor(gameType!)} variant="light">
@@ -808,6 +803,92 @@ export function GamePage() {
         </Group>
       </Card>
 
+      {/* Game Results (finished games only) */}
+      {game.status === 'finished' && gameResultsData && (
+        <Card mt="lg" padding="lg" radius="md" withBorder>
+          <Title order={4} mb="md">
+            Results
+          </Title>
+
+          {/* Game Information */}
+          <SimpleGrid cols={2} spacing="md" mb="md">
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Игра
+              </Text>
+              <Text size="sm" fw={500}>
+                {game.gameType === 'cash' ? 'Cash' : 'Tournament'}
+              </Text>
+            </Group>
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Дата
+              </Text>
+              <Text size="sm" fw={500}>
+                {game.startTime ? formatDate(game.startTime) : '—'}
+              </Text>
+            </Group>
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Продолжительность
+              </Text>
+              <Text size="sm" fw={500}>
+                {game.durationSeconds && game.durationSeconds > 0
+                  ? formatDuration(game.durationSeconds)
+                  : '—'}
+              </Text>
+            </Group>
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Участников
+              </Text>
+              <Text size="sm" fw={500}>
+                {participants
+                  ? participants.filter((p) => p.status === 'confirmed').length
+                  : 0}
+              </Text>
+            </Group>
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Банкир
+              </Text>
+              <Text size="sm" fw={500}>
+                {bankerName}
+              </Text>
+            </Group>
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Валюта
+              </Text>
+              <Text size="sm" fw={500}>
+                {game.currency}
+              </Text>
+            </Group>
+            <Group gap="sm" justify="space-between">
+              <Text size="sm" c="dimmed">
+                Банк
+              </Text>
+              <Text size="sm" fw={500}>
+                {formatCurrency(
+                  (gameResultsData.results || []).reduce(
+                    (sum, r) => sum + r.totalInvested,
+                    0,
+                  ),
+                  game.currency,
+                )}
+              </Text>
+            </Group>
+          </SimpleGrid>
+
+          {/* Results Table */}
+          {!isMobile ? (
+            <GameResultsTable results={gameResultsData.results || []} />
+          ) : (
+            <GameResultsMobile results={gameResultsData.results || []} />
+          )}
+        </Card>
+      )}
+
       {/* Participants */}
       <Card mt="lg" padding="lg" radius="md" withBorder>
         <Title order={4} mb="md">
@@ -877,40 +958,42 @@ export function GamePage() {
       </Card>
 
       {/* Accept/Decline Game Participation (current user only, invited status) */}
-      {participants && (() => {
-        const currentUserParticipant = participants.find(
-          (p) => p.player.id === currentPlayerId,
-        )
-        const canAcceptDecline =
-          currentUserParticipant && currentUserParticipant.status === 'invited'
-        return canAcceptDecline ? (
-          <Card mt="lg" padding="lg" radius="md" withBorder>
-            <Stack gap="sm" align={isMobile ? 'stretch' : 'center'}>
-              <Button
-                color="green"
-                leftSection={<IconCheck size={16} />}
-                onClick={() => acceptParticipation.mutateAsync(gameIdNum)}
-                loading={acceptParticipation.isPending}
-                size={isMobile ? 'md' : 'sm'}
-                w={isMobile ? '100%' : 'auto'}
-              >
-                Принять участие
-              </Button>
-              <Button
-                color="red"
-                variant="outline"
-                leftSection={<IconX size={16} />}
-                onClick={() => declineParticipation.mutateAsync(gameIdNum)}
-                loading={declineParticipation.isPending}
-                size={isMobile ? 'md' : 'sm'}
-                w={isMobile ? '100%' : 'auto'}
-              >
-                Отказаться
-              </Button>
-            </Stack>
-          </Card>
-        ) : null
-      })()}
+      {participants &&
+        (() => {
+          const currentUserParticipant = participants.find(
+            (p) => p.player.id === currentPlayerId,
+          )
+          const canAcceptDecline =
+            currentUserParticipant &&
+            currentUserParticipant.status === 'invited'
+          return canAcceptDecline ? (
+            <Card mt="lg" padding="lg" radius="md" withBorder>
+              <Stack gap="sm" align={isMobile ? 'stretch' : 'center'}>
+                <Button
+                  color="green"
+                  leftSection={<IconCheck size={16} />}
+                  onClick={() => acceptParticipation.mutateAsync(gameIdNum)}
+                  loading={acceptParticipation.isPending}
+                  size={isMobile ? 'md' : 'sm'}
+                  w={isMobile ? '100%' : 'auto'}
+                >
+                  Принять участие
+                </Button>
+                <Button
+                  color="red"
+                  variant="outline"
+                  leftSection={<IconX size={16} />}
+                  onClick={() => declineParticipation.mutateAsync(gameIdNum)}
+                  loading={declineParticipation.isPending}
+                  size={isMobile ? 'md' : 'sm'}
+                  w={isMobile ? '100%' : 'auto'}
+                >
+                  Отказаться
+                </Button>
+              </Stack>
+            </Card>
+          ) : null
+        })()}
 
       {/* Active Game Section */}
       {isActive && (
@@ -966,103 +1049,108 @@ export function GamePage() {
               <Title order={4} mb="md">
                 Мои данные
               </Title>
-              {participants && (() => {
-                const myParticipant = participants.find(
-                  (p) => p.player.id === currentPlayerId,
-                )
-                if (!myParticipant) {
-                  return (
-                    <Text size="sm" c="dimmed">
-                      You are not a participant in this game.
-                    </Text>
+              {participants &&
+                (() => {
+                  const myParticipant = participants.find(
+                    (p) => p.player.id === currentPlayerId,
                   )
-                }
-                return (
-                  <Stack gap="sm">
-                    <Table
-                      variant={isMobile ? 'compact' : 'striped'}
-                      style={isMobile ? { fontSize: '0.85rem' } : undefined}
-                    >
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Buy-in</Table.Th>
-                          <Table.Th>Rebuy</Table.Th>
-                          <Table.Th>Invested</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        <Table.Tr>
-                          <Table.Td>{myParticipant.buyInCount}</Table.Td>
-                          <Table.Td>{myParticipant.rebuyCount}</Table.Td>
-                          <Table.Td>
-                            {Math.round(
-                              myParticipant.buyInCount * game.buyInAmount +
-                                (myParticipant.rebuyCount *
-                                  (game.rebuyPrice ?? 0)),
-                            )}
-                          </Table.Td>
-                        </Table.Tr>
-                      </Table.Tbody>
-                    </Table>
+                  if (!myParticipant) {
+                    return (
+                      <Text size="sm" c="dimmed">
+                        You are not a participant in this game.
+                      </Text>
+                    )
+                  }
+                  return (
+                    <Stack gap="sm">
+                      <Table
+                        variant={isMobile ? 'compact' : 'striped'}
+                        style={isMobile ? { fontSize: '0.85rem' } : undefined}
+                      >
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Buy-in</Table.Th>
+                            <Table.Th>Rebuy</Table.Th>
+                            <Table.Th>Invested</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          <Table.Tr>
+                            <Table.Td>{myParticipant.buyInCount}</Table.Td>
+                            <Table.Td>{myParticipant.rebuyCount}</Table.Td>
+                            <Table.Td>
+                              {Math.round(
+                                myParticipant.buyInCount * game.buyInAmount +
+                                  myParticipant.rebuyCount *
+                                    (game.rebuyPrice ?? 0),
+                              )}
+                            </Table.Td>
+                          </Table.Tr>
+                        </Table.Tbody>
+                      </Table>
 
-                    <Button
-                      leftSection={<IconCoin size={16} />}
-                      onClick={() => {
-                        setCurrentStackValue(0)
-                        setCurrentStackModalOpen(true)
-                      }}
-                      fullWidth={isMobile}
-                    >
-                      Ввести текущий стек
-                    </Button>
+                      <Button
+                        leftSection={<IconCoin size={16} />}
+                        onClick={() => {
+                          setCurrentStackValue(0)
+                          setCurrentStackModalOpen(true)
+                        }}
+                        fullWidth={isMobile}
+                      >
+                        Ввести текущий стек
+                      </Button>
 
-                    <Title order={5} mb="xs">
-                      Данные соперников
-                    </Title>
-                    <Table
-                      variant={isMobile ? 'compact' : 'striped'}
-                      style={isMobile ? { fontSize: '0.85rem' } : undefined}
-                    >
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Игрок</Table.Th>
-                          <Table.Th>Rebuy</Table.Th>
-                          <Table.Th>Invested</Table.Th>
-                          <Table.Th>Chips End</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {participants
-                          .filter((p) => p.player.id !== currentPlayerId && p.status === 'confirmed')
-                          .map((p) => (
-                            <Table.Tr key={p.player.id}>
-                              <Table.Td>
-                                {p.player.tgUserID || p.player.id}
-                              </Table.Td>
-                              <Table.Td>
-                                {p.rebuyCount} /{' '}
-                                {Math.round(
-                                  p.rebuyCount * (game.rebuyPrice ?? 0),
-                                )}
-                              </Table.Td>
-                              <Table.Td>
-                                {Math.round(
-                                  p.buyInCount * game.buyInAmount +
+                      <Title order={5} mb="xs">
+                        Данные соперников
+                      </Title>
+                      <Table
+                        variant={isMobile ? 'compact' : 'striped'}
+                        style={isMobile ? { fontSize: '0.85rem' } : undefined}
+                      >
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Игрок</Table.Th>
+                            <Table.Th>Rebuy</Table.Th>
+                            <Table.Th>Invested</Table.Th>
+                            <Table.Th>Chips End</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {participants
+                            .filter(
+                              (p) =>
+                                p.player.id !== currentPlayerId &&
+                                p.status === 'confirmed',
+                            )
+                            .map((p) => (
+                              <Table.Tr key={p.player.id}>
+                                <Table.Td>
+                                  {p.player.tgUserID || p.player.id}
+                                </Table.Td>
+                                <Table.Td>
+                                  {p.rebuyCount} /{' '}
+                                  {Math.round(
                                     p.rebuyCount * (game.rebuyPrice ?? 0),
-                                )}
-                              </Table.Td>
-                              <Table.Td>
-                                {p.chipsEnd !== undefined
-                                  ? Math.round(p.chipsEnd)
-                                  : '—'}
-                              </Table.Td>
-                            </Table.Tr>
-                          ))}
-                      </Table.Tbody>
-                    </Table>
-                  </Stack>
-                )
-              })()}
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  {Math.round(
+                                    p.buyInCount * game.buyInAmount +
+                                      p.rebuyCount * (game.rebuyPrice ?? 0),
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  {p.chipsEnd !== undefined
+                                    ? Math.round(p.chipsEnd)
+                                    : '—'}
+                                </Table.Td>
+                              </Table.Tr>
+                            ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Stack>
+                  )
+                })()}
             </Card>
           )}
         </>
@@ -1162,7 +1250,10 @@ export function GamePage() {
               data={gameTypeOptions}
               value={adjustForm.values.gameType}
               onChange={(value) =>
-                adjustForm.setFieldValue('gameType', (value ?? 'cash_open') as GameType)
+                adjustForm.setFieldValue(
+                  'gameType',
+                  (value ?? 'cash_open') as GameType,
+                )
               }
               required
               error={adjustForm.errors.gameType}
@@ -1174,9 +1265,16 @@ export function GamePage() {
               label="Banker"
               placeholder="Select banker"
               data={bankerOptions}
-              value={adjustForm.values.bankerId ? String(adjustForm.values.bankerId) : null}
+              value={
+                adjustForm.values.bankerId
+                  ? String(adjustForm.values.bankerId)
+                  : null
+              }
               onChange={(value) =>
-                adjustForm.setFieldValue('bankerId', value ? parseInt(value, 10) : 0)
+                adjustForm.setFieldValue(
+                  'bankerId',
+                  value ? parseInt(value, 10) : 0,
+                )
               }
               required
               error={adjustForm.errors.bankerId}
@@ -1247,7 +1345,10 @@ export function GamePage() {
               description="Enable rebuy for this game"
               checked={adjustForm.values.rebuyAllowed}
               onChange={(e) =>
-                adjustForm.setFieldValue('rebuyAllowed', e.currentTarget.checked)
+                adjustForm.setFieldValue(
+                  'rebuyAllowed',
+                  e.currentTarget.checked,
+                )
               }
             />
 
@@ -1286,7 +1387,10 @@ export function GamePage() {
                 placeholder="1800"
                 value={adjustForm.values.durationSeconds}
                 onChange={(value) =>
-                  adjustForm.setFieldValue('durationSeconds', Number(value) || 0)
+                  adjustForm.setFieldValue(
+                    'durationSeconds',
+                    Number(value) || 0,
+                  )
                 }
                 description="Game duration in seconds. 0 = no time limit."
                 leftSection={<IconClock size={16} />}
@@ -1524,8 +1628,12 @@ export function GamePage() {
                   <Alert color="red" variant="light" title="Balance Mismatch">
                     <Stack gap="xs">
                       <Text>Invested: {Math.round(bankCheck.totalBank)}</Text>
-                      <Text>Chips End: {Math.round(bankCheck.totalPayout)}</Text>
-                      <Text>Difference: {Math.round(bankCheck.difference)}</Text>
+                      <Text>
+                        Chips End: {Math.round(bankCheck.totalPayout)}
+                      </Text>
+                      <Text>
+                        Difference: {Math.round(bankCheck.difference)}
+                      </Text>
                     </Stack>
                   </Alert>
                   <Text size="sm">
@@ -1550,7 +1658,7 @@ export function GamePage() {
                             color: 'green',
                           })
                           setFinishGameModalOpen(false)
-                          refetch()
+                          //navigate(`/games/${gameIdNum}`)
                         } catch (err) {
                           if (err instanceof ApiClientError) {
                             notifications.show({
@@ -1571,11 +1679,21 @@ export function GamePage() {
             }
             return (
               <>
-                <Alert color="green" variant="light" title="Game Balance Correct">
+                <Alert
+                  color="green"
+                  variant="light"
+                  title="Game Balance Correct"
+                >
                   <Stack gap="xs">
-                    <Text>Total Invested: {Math.round(bankCheck.totalBank)}</Text>
-                    <Text>Total Chips End: {Math.round(bankCheck.totalPayout)}</Text>
-                    <Text>Total Payout: {Math.round(bankCheck.totalPayout)}</Text>
+                    <Text>
+                      Total Invested: {Math.round(bankCheck.totalBank)}
+                    </Text>
+                    <Text>
+                      Total Chips End: {Math.round(bankCheck.totalPayout)}
+                    </Text>
+                    <Text>
+                      Total Payout: {Math.round(bankCheck.totalPayout)}
+                    </Text>
                   </Stack>
                 </Alert>
                 <Group justify="flex-end" gap="sm">
@@ -1592,12 +1710,11 @@ export function GamePage() {
                         await finishGame.mutateAsync(gameIdNum)
                         notifications.show({
                           title: 'Game Finished',
-                          message:
-                            'The game has been finished successfully.',
+                          message: 'The game has been finished successfully.',
                           color: 'green',
                         })
                         setFinishGameModalOpen(false)
-                        refetch()
+                        //navigate(`/games/${gameIdNum}`)
                       } catch (err) {
                         if (err instanceof ApiClientError) {
                           notifications.show({
@@ -1628,14 +1745,9 @@ export function GamePage() {
         size="sm"
       >
         <Stack gap="md">
-          <Text>
-            Add a rebuy for this player?
-          </Text>
+          <Text>Add a rebuy for this player?</Text>
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              onClick={() => setRebuyPlayerId(null)}
-            >
+            <Button variant="subtle" onClick={() => setRebuyPlayerId(null)}>
               Cancel
             </Button>
             <Button
@@ -1731,7 +1843,9 @@ function GameTimer({
       } else {
         const mins = Math.floor(remaining / 60)
         const secs = Math.floor(remaining % 60)
-        setTimeLeft(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`)
+        setTimeLeft(
+          `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
+        )
       }
     }
 

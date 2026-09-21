@@ -881,30 +881,38 @@ func (h *GameHandler) GetGameResults(c *gin.Context) {
 		return
 	}
 
-	participants, err := h.svc.GetGameParticipants(c.Request.Context(), tgUserID, game.ClubID, gameID)
+	// Use the service method that calculates all derived metrics.
+	_, results, err := h.svc.GetGameResultsWithCalculations(c.Request.Context(), tgUserID, game.ClubID, gameID)
 	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
 
-	// Build results from participants.
-	results := make([]gin.H, len(participants))
-	for i, p := range participants {
-		result := gin.H{
-			"player_id":     p.PlayerID,
-			"buy_in_count":  p.BuyInCount,
-			"rebuy_count":   p.RebuyCount,
-			"chips_end":     p.ChipsEnd,
-			"payout_amount": p.PayoutAmount,
-			"place":         p.Place,
-			"status":        p.Status,
+	// Build response from calculated results (handler only transforms data, no business logic).
+	responseResults := make([]gin.H, len(results))
+	for i, r := range results {
+		responseResults[i] = gin.H{
+			"player_id":       r.PlayerID,
+			"player_name":     r.PlayerName,
+			"place":           r.Place,
+			"buy_in_count":    r.BuyInCount,
+			"rebuy_count":     r.RebuyCount,
+			"buy_in_amount":   r.BuyInAmount,
+			"rebuy_amount":    r.RebuyAmount,
+			"total_invested":  r.TotalInvested,
+			"chips_end":       r.ChipsEnd,
+			"payout_amount":   r.PayoutAmount,
+			"profit":          r.Profit,
+			"roi":             r.ROI,
+			"status":          r.Status,
+			"game_type":       r.GameType,
+			"start_time":      r.StartTime,
 		}
-		results[i] = result
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"game":       serializeGame(game),
-		"results":    results,
+		"results":    responseResults,
 	})
 }
 

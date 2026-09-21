@@ -85,7 +85,9 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 		// Statistics
 		statsHandler := NewStatisticsHandler(svc)
 		protected.GET("/clubs/:clubId/statistics", statsHandler.GetClubStatistics)
+		protected.GET("/clubs/:clubId/statistics/members", statsHandler.GetClubMemberStatistics)
 		protected.GET("/players/:playerId/statistics", statsHandler.GetPlayerStatistics)
+		protected.GET("/players/:playerId/history", statsHandler.GetPlayerGameHistory)
 
 		// Games
 		gameHandler := NewGameHandler(svc)

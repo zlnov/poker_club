@@ -39,7 +39,8 @@ import { useTelegramAuth } from '../auth/useTelegramAuth'
  */
 export function RootLayout() {
   const telegramEnv = useTelegramEnvironment()
-  const [drawerOpened, { open: openDrawer, close: closeDrawer }] = useDisclosure(false)
+  const [drawerOpened, { open: openDrawer, close: closeDrawer }] =
+    useDisclosure(false)
 
   // Initialize Telegram authentication (hook handles deduplication)
   useTelegramAuth()

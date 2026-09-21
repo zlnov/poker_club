@@ -879,6 +879,27 @@ func (r *gameParticipantRepository) GetPlayerFinishedStats(ctx context.Context, 
 	return totalBuyInCount, avgPlace, nil
 }
 
+// GetPlayerFinishedStatsByGameType returns derived metrics for a player across
+// finished games of a specific game_type in a club.
+// These are calculated at read time from game_participants, not cached.
+func (r *gameParticipantRepository) GetPlayerFinishedStatsByGameType(ctx context.Context, playerID, clubID int64, gameType string) (totalBuyInCount int, avgPlace float64, gamesInProfit int, err error) {
+	query := `
+		SELECT COALESCE(SUM(gp.buy_in_count), 0),
+		       COALESCE(AVG(gp.place), 0),
+		       COALESCE(SUM(CASE 
+		           WHEN (gp.payout_amount - (gp.buy_in_count * g.buy_in_amount + COALESCE(gp.rebuy_count * COALESCE(g.rebuy_price, 0), 0))) > 0 
+		           THEN 1 ELSE 0 END), 0)
+		FROM game_participants gp
+		JOIN games g ON g.id = gp.game_id
+		WHERE gp.player_id = $1 AND g.club_id = $2 AND g.status = 'finished' AND g.game_type = $3
+	`
+	err = r.db.Pool.QueryRow(ctx, query, playerID, clubID, gameType).Scan(&totalBuyInCount, &avgPlace, &gamesInProfit)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to get player finished stats by game type: %w", err)
+	}
+	return totalBuyInCount, avgPlace, gamesInProfit, nil
+}
+
 // eventRepository implements domain.EventRepository.
 type eventRepository struct {
 	db *DB
@@ -1081,6 +1102,60 @@ func (r *playerStatisticsRepository) GetByClub(ctx context.Context, clubID int64
 			&s.ROI, &s.ITM, &s.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan player statistics: %w", err)
+		}
+		stats = append(stats, &s)
+	}
+	return stats, nil
+}
+
+// GetClubMemberStatisticsByGameType returns aggregated statistics for each club member
+// filtered by game_type. Statistics are calculated on-the-fly from game_participants
+// joined with games, not from the cached player_statistics table.
+func (r *playerStatisticsRepository) GetClubMemberStatisticsByGameType(ctx context.Context, clubID int64, gameType string) ([]*domain.ClubMemberStatistics, error) {
+	query := `
+		WITH member_stats AS (
+			SELECT
+				p.id AS player_id,
+				COALESCE(p.nickname, p.first_name || ' ' || p.last_name) AS player_name,
+				COUNT(gp.id) AS games,
+				COALESCE(SUM(gp.buy_in_count * g.buy_in_amount + COALESCE(gp.rebuy_count * COALESCE(g.rebuy_price, 0), 0)), 0) AS total_invested,
+				COALESCE(SUM(gp.payout_amount - (gp.buy_in_count * g.buy_in_amount + COALESCE(gp.rebuy_count * COALESCE(g.rebuy_price, 0), 0))), 0) AS profit,
+				COALESCE(SUM(CASE WHEN gp.place = 1 THEN 1 ELSE 0 END), 0) AS games_won,
+				COALESCE(AVG(gp.place), 0) AS avg_place
+			FROM club_members cm
+			JOIN players p ON p.id = cm.player_id
+			JOIN games g ON g.club_id = cm.club_id
+			JOIN game_participants gp ON gp.game_id = g.id AND gp.player_id = p.id
+			WHERE cm.club_id = $1 AND cm.status = 'active' AND g.status = 'finished' AND g.game_type = $2
+			GROUP BY p.id, player_name
+		)
+		SELECT
+			player_id,
+			player_name,
+			games,
+			total_invested,
+			profit,
+			CASE WHEN total_invested > 0 THEN (profit / total_invested) * 100 ELSE 0 END AS roi,
+			CASE WHEN games > 0 THEN (games_won::float / games) * 100 ELSE 0 END AS winrate,
+			avg_place,
+			games_won
+		FROM member_stats
+		ORDER BY profit DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, clubID, gameType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get club member statistics by game type: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []*domain.ClubMemberStatistics
+	for rows.Next() {
+		var s domain.ClubMemberStatistics
+		if err := rows.Scan(
+			&s.PlayerID, &s.PlayerName, &s.Games, &s.TotalInvested, &s.Profit,
+			&s.ROI, &s.Winrate, &s.AvgPlace, &s.GamesWon,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan club member statistics: %w", err)
 		}
 		stats = append(stats, &s)
 	}

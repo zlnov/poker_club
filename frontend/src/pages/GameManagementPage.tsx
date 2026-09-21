@@ -32,15 +32,9 @@ import {
   Accordion,
   NumberInput,
 } from '@mantine/core'
-import {
-  IconChevronRight,
-  IconTrophy,
-} from '@tabler/icons-react'
+import { IconChevronRight, IconTrophy } from '@tabler/icons-react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  PageContainer,
-  PageHeader,
-} from '../components/ui'
+import { PageContainer, PageHeader } from '../components/ui'
 import {
   useGame,
   useGameMonitor,
@@ -94,9 +88,7 @@ export function GameManagementPage() {
   const isMobile = useMediaQuery('(max-width: 768px)')
 
   // Resolve banker name from club members
-  const bankerMember = members?.find(
-    (m) => m.clubMemberId === game?.bankerId,
-  )
+  const bankerMember = members?.find((m) => m.clubMemberId === game?.bankerId)
   const bankerName = bankerMember
     ? formatMemberName(bankerMember)
     : `Banker #${game?.bankerId ?? '—'}`
@@ -112,7 +104,9 @@ export function GameManagementPage() {
   // Use monitor data if available (has full participant info), otherwise use participants
   const displayParticipants = monitorData?.participants ?? participants ?? []
   // Only confirmed participants are shown in game data tables
-  const confirmedParticipants = displayParticipants.filter((p) => p.status === 'confirmed')
+  const confirmedParticipants = displayParticipants.filter(
+    (p) => p.status === 'confirmed',
+  )
 
   // Compute bank check for finish game validation
   function computeBankCheck(): GameBankCheck {
@@ -152,8 +146,10 @@ export function GameManagementPage() {
         color: 'green',
       })
       setFinishGameModalOpen(false)
-      refetchGame()
-      refetchParticipants()
+      //navigate(`/clubs/${game?.clubId}/games`)
+      navigate(`/games/${gameIdNum}`)
+      //refetchGame()
+      //refetchParticipants()
     } catch (err) {
       if (err instanceof ApiClientError) {
         notifications.show({
@@ -264,11 +260,7 @@ export function GameManagementPage() {
         title="Game Management"
         description={game.gameType}
         action={
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => navigate(-1)}
-          >
+          <Button variant="subtle" size="sm" onClick={() => navigate(-1)}>
             Back
           </Button>
         }
@@ -281,26 +273,44 @@ export function GameManagementPage() {
         </Title>
         <Stack gap="sm">
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Club</Text>
-            <Text size="sm" fw={500}>{club?.name ?? '—'}</Text>
+            <Text size="sm" c="dimmed">
+              Club
+            </Text>
+            <Text size="sm" fw={500}>
+              {club?.name ?? '—'}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Game ID</Text>
-            <Text size="sm" fw={500}>{game.id}</Text>
+            <Text size="sm" c="dimmed">
+              Game ID
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.id}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Type</Text>
-            <Text size="sm" fw={500}>{game.gameType}</Text>
+            <Text size="sm" c="dimmed">
+              Type
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.gameType}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Banker</Text>
+            <Text size="sm" c="dimmed">
+              Banker
+            </Text>
             <Text size="sm" fw={500}>
               {bankerName}
             </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Status</Text>
-            <Badge color="green" variant="light">{game.status}</Badge>
+            <Text size="sm" c="dimmed">
+              Status
+            </Text>
+            <Badge color="green" variant="light">
+              {game.status}
+            </Badge>
           </Group>
         </Stack>
       </Card>
@@ -313,7 +323,9 @@ export function GameManagementPage() {
         <Grid>
           <Grid.Col span={isMobile ? 6 : 3}>
             <Stack gap="xs" align="center">
-              <Text size="xs" c="dimmed">Buy-in</Text>
+              <Text size="xs" c="dimmed">
+                Buy-in
+              </Text>
               <Text size="sm" fw={500}>
                 {Math.round(game.buyInAmount)}
               </Text>
@@ -321,7 +333,9 @@ export function GameManagementPage() {
           </Grid.Col>
           <Grid.Col span={isMobile ? 6 : 3}>
             <Stack gap="xs" align="center">
-              <Text size="xs" c="dimmed">Rebuy</Text>
+              <Text size="xs" c="dimmed">
+                Rebuy
+              </Text>
               <Text size="sm" fw={500}>
                 {game.rebuyAllowed
                   ? Math.round(game.rebuyPrice ?? 0)
@@ -331,14 +345,22 @@ export function GameManagementPage() {
           </Grid.Col>
           <Grid.Col span={isMobile ? 6 : 3}>
             <Stack gap="xs" align="center">
-              <Text size="xs" c="dimmed">Participants</Text>
-              <Text size="sm" fw={500}>{displayParticipants.length}</Text>
+              <Text size="xs" c="dimmed">
+                Participants
+              </Text>
+              <Text size="sm" fw={500}>
+                {displayParticipants.length}
+              </Text>
             </Stack>
           </Grid.Col>
           <Grid.Col span={isMobile ? 6 : 3}>
             <Stack gap="xs" align="center">
-              <Text size="xs" c="dimmed">Start Time</Text>
-              <Text size="sm" fw={500}>{formatDateTime(game.startTime)}</Text>
+              <Text size="xs" c="dimmed">
+                Start Time
+              </Text>
+              <Text size="sm" fw={500}>
+                {formatDateTime(game.startTime)}
+              </Text>
             </Stack>
           </Grid.Col>
         </Grid>
@@ -367,62 +389,61 @@ export function GameManagementPage() {
               </Accordion.Control>
               <Accordion.Panel>
                 <Stack gap="xs" w="100%">
-                   {members
-                     ?.filter((m) => m.status === 'active')
-                     .map((m) => {
-                       const participant = displayParticipants.find(
-                         (p) => p.player.id === m.playerId,
-                       )
-                       const statusColor =
-                         participant?.status === 'confirmed'
-                           ? 'green'
-                           : participant?.status === 'accepted'
-                             ? 'yellow'
-                             : participant?.status === 'declined'
-                               ? 'red'
-                               : 'blue'
+                  {members
+                    ?.filter((m) => m.status === 'active')
+                    .map((m) => {
+                      const participant = displayParticipants.find(
+                        (p) => p.player.id === m.playerId,
+                      )
+                      const statusColor =
+                        participant?.status === 'confirmed'
+                          ? 'green'
+                          : participant?.status === 'accepted'
+                            ? 'yellow'
+                            : participant?.status === 'declined'
+                              ? 'red'
+                              : 'blue'
 
-                       // Determine action based on game status and participant status
-                       const isConfirmed = participant?.status === 'confirmed'
-                       const canRemove = game.status === 'planned' && isConfirmed
-                       const canAdd = !isConfirmed || game.status === 'active'
+                      // Determine action based on game status and participant status
+                      const isConfirmed = participant?.status === 'confirmed'
+                      const canRemove = game.status === 'planned' && isConfirmed
+                      const canAdd = !isConfirmed || game.status === 'active'
 
-                       return (
-                         <Group
-                           key={m.playerId}
-                           justify="space-between"
-                           w="100%"
-                           style={{ padding: '0 12px' }}
-                         >
-                           <Text
-                             size="sm"
-                             style={{ cursor: (canRemove || canAdd) ? 'pointer' : 'default' }}
-                             onClick={() => {
-                               if (canRemove) {
-                                 setRemovePlayerId(m.playerId)
-                               } else if (canAdd) {
-                                 setAddPlayerId(m.playerId)
-                               }
-                             }}
-                           >
-                             {formatMemberName(m)}
-                           </Text>
-                           <Badge
-                             color={statusColor}
-                             variant="light"
-                             size="sm"
-                           >
-                             {participant?.status ?? 'not in game'}
-                           </Badge>
-                         </Group>
-                       )
-                     })}
+                      return (
+                        <Group
+                          key={m.playerId}
+                          justify="space-between"
+                          w="100%"
+                          style={{ padding: '0 12px' }}
+                        >
+                          <Text
+                            size="sm"
+                            style={{
+                              cursor:
+                                canRemove || canAdd ? 'pointer' : 'default',
+                            }}
+                            onClick={() => {
+                              if (canRemove) {
+                                setRemovePlayerId(m.playerId)
+                              } else if (canAdd) {
+                                setAddPlayerId(m.playerId)
+                              }
+                            }}
+                          >
+                            {formatMemberName(m)}
+                          </Text>
+                          <Badge color={statusColor} variant="light" size="sm">
+                            {participant?.status ?? 'not in game'}
+                          </Badge>
+                        </Group>
+                      )
+                    })}
                 </Stack>
               </Accordion.Panel>
             </Accordion.Item>
           </Accordion>
 
-  {/* Rebuy button */}
+          {/* Rebuy button */}
           <Button
             color="violet"
             size="sm"
@@ -435,9 +456,10 @@ export function GameManagementPage() {
           <Button
             color="violet"
             size="sm"
-            onClick={isMobile
-              ? () => setChipsModalOpen(true)
-              : () => navigate(`/games/${gameIdNum}/chips`)
+            onClick={
+              isMobile
+                ? () => setChipsModalOpen(true)
+                : () => navigate(`/games/${gameIdNum}/chips`)
             }
           >
             Ввести Chips End
@@ -469,9 +491,10 @@ export function GameManagementPage() {
                 const invested =
                   p.buyInCount * game.buyInAmount +
                   p.rebuyCount * (game.rebuyPrice ?? 0)
-                const payout = p.chipsEnd !== undefined
-                  ? Math.round(p.chipsEnd * game.chipValue)
-                  : '—'
+                const payout =
+                  p.chipsEnd !== undefined
+                    ? Math.round(p.chipsEnd * game.chipValue)
+                    : '—'
                 return (
                   <Table.Tr key={p.player.id}>
                     <Table.Td>
@@ -479,15 +502,16 @@ export function GameManagementPage() {
                         .filter(Boolean)
                         .join(' ') || p.player.nickname}
                     </Table.Td>
-                    <Table.Td ta="center">{Math.round(p.buyInCount * game.buyInAmount)}</Table.Td>
                     <Table.Td ta="center">
-                      {p.rebuyCount} / {Math.round(p.rebuyCount * (game.rebuyPrice ?? 0))}
+                      {Math.round(p.buyInCount * game.buyInAmount)}
+                    </Table.Td>
+                    <Table.Td ta="center">
+                      {p.rebuyCount} /{' '}
+                      {Math.round(p.rebuyCount * (game.rebuyPrice ?? 0))}
                     </Table.Td>
                     <Table.Td ta="center">{Math.round(invested)}</Table.Td>
                     <Table.Td ta="center">
-                      {p.chipsEnd !== undefined
-                        ? Math.round(p.chipsEnd)
-                        : '—'}
+                      {p.chipsEnd !== undefined ? Math.round(p.chipsEnd) : '—'}
                     </Table.Td>
                     <Table.Td ta="center">{payout}</Table.Td>
                   </Table.Tr>
@@ -497,18 +521,35 @@ export function GameManagementPage() {
               <Table.Tr>
                 <Table.Td fw={700}>TOTAL</Table.Td>
                 <Table.Td fw={700} ta="center">
-                  {Math.round(confirmedParticipants.reduce((sum, p) => sum + p.buyInCount * game.buyInAmount, 0))}
+                  {Math.round(
+                    confirmedParticipants.reduce(
+                      (sum, p) => sum + p.buyInCount * game.buyInAmount,
+                      0,
+                    ),
+                  )}
                 </Table.Td>
                 <Table.Td fw={700} ta="center">
-                  {confirmedParticipants.reduce((sum, p) => sum + p.rebuyCount, 0)}
+                  {confirmedParticipants.reduce(
+                    (sum, p) => sum + p.rebuyCount,
+                    0,
+                  )}
                   {' / '}
-                  {Math.round(confirmedParticipants.reduce((sum, p) => sum + p.rebuyCount * (game.rebuyPrice ?? 0), 0))}
+                  {Math.round(
+                    confirmedParticipants.reduce(
+                      (sum, p) => sum + p.rebuyCount * (game.rebuyPrice ?? 0),
+                      0,
+                    ),
+                  )}
                 </Table.Td>
-                <Table.Td fw={700} ta="center">{Math.round(bankCheck.totalBank)}</Table.Td>
+                <Table.Td fw={700} ta="center">
+                  {Math.round(bankCheck.totalBank)}
+                </Table.Td>
                 <Table.Td fw={700} ta="center">
                   {Math.round(bankCheck.totalPayout)}
                 </Table.Td>
-                <Table.Td fw={700} ta="center">{Math.round(bankCheck.totalPayout)}</Table.Td>
+                <Table.Td fw={700} ta="center">
+                  {Math.round(bankCheck.totalPayout)}
+                </Table.Td>
               </Table.Tr>
             </Table.Tbody>
           </Table>
@@ -521,9 +562,10 @@ export function GameManagementPage() {
               const invested =
                 p.buyInCount * game.buyInAmount +
                 p.rebuyCount * (game.rebuyPrice ?? 0)
-              const payout = p.chipsEnd !== undefined
-                ? Math.round(p.chipsEnd * game.chipValue)
-                : '—'
+              const payout =
+                p.chipsEnd !== undefined
+                  ? Math.round(p.chipsEnd * game.chipValue)
+                  : '—'
               const playerName =
                 [p.player.firstName, p.player.lastName]
                   .filter(Boolean)
@@ -551,16 +593,23 @@ export function GameManagementPage() {
                     <Table.Tbody>
                       <Table.Tr>
                         <Table.Td ta="center">
-                          <Text size="xs" c="dimmed">Buy-in</Text>
+                          <Text size="xs" c="dimmed">
+                            Buy-in
+                          </Text>
                         </Table.Td>
                         <Table.Td ta="center">
-                          <Text size="xs" c="dimmed">Rebuy</Text>
+                          <Text size="xs" c="dimmed">
+                            Rebuy
+                          </Text>
                         </Table.Td>
                       </Table.Tr>
                       <Table.Tr>
-                      <Table.Td ta="center">{Math.round(p.buyInCount * game.buyInAmount)}</Table.Td>
                         <Table.Td ta="center">
-                          {p.rebuyCount} / {Math.round(p.rebuyCount * (game.rebuyPrice ?? 0))}
+                          {Math.round(p.buyInCount * game.buyInAmount)}
+                        </Table.Td>
+                        <Table.Td ta="center">
+                          {p.rebuyCount} /{' '}
+                          {Math.round(p.rebuyCount * (game.rebuyPrice ?? 0))}
                         </Table.Td>
                       </Table.Tr>
                     </Table.Tbody>
@@ -577,10 +626,14 @@ export function GameManagementPage() {
                     <Table.Tbody>
                       <Table.Tr>
                         <Table.Td ta="center">
-                          <Text size="xs" c="dimmed">Invested</Text>
+                          <Text size="xs" c="dimmed">
+                            Invested
+                          </Text>
                         </Table.Td>
                         <Table.Td ta="center">
-                          <Text size="xs" c="dimmed">Chips End</Text>
+                          <Text size="xs" c="dimmed">
+                            Chips End
+                          </Text>
                         </Table.Td>
                       </Table.Tr>
                       <Table.Tr>
@@ -600,7 +653,9 @@ export function GameManagementPage() {
             {/* TOTAL mini-table */}
             <Card padding="sm" radius="sm" withBorder>
               <Group justify="space-between" mb="x">
-                <Text fw={700} size="sm">TOTAL</Text>
+                <Text fw={700} size="sm">
+                  TOTAL
+                </Text>
                 <Text fw={700} size="sm" c="violet">
                   {Math.round(bankCheck.totalPayout)}
                 </Text>
@@ -615,20 +670,38 @@ export function GameManagementPage() {
                 <Table.Tbody>
                   <Table.Tr>
                     <Table.Td ta="center">
-                      <Text size="xs" c="dimmed">Buy-in</Text>
+                      <Text size="xs" c="dimmed">
+                        Buy-in
+                      </Text>
                     </Table.Td>
                     <Table.Td ta="center">
-                      <Text size="xs" c="dimmed">Rebuy</Text>
+                      <Text size="xs" c="dimmed">
+                        Rebuy
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
                   <Table.Tr>
                     <Table.Td ta="center">
-                      {Math.round(confirmedParticipants.reduce((sum, p) => sum + p.buyInCount * game.buyInAmount, 0))}
+                      {Math.round(
+                        confirmedParticipants.reduce(
+                          (sum, p) => sum + p.buyInCount * game.buyInAmount,
+                          0,
+                        ),
+                      )}
                     </Table.Td>
                     <Table.Td ta="center">
-                      {confirmedParticipants.reduce((sum, p) => sum + p.rebuyCount, 0)}
+                      {confirmedParticipants.reduce(
+                        (sum, p) => sum + p.rebuyCount,
+                        0,
+                      )}
                       {' / '}
-                      {Math.round(confirmedParticipants.reduce((sum, p) => sum + p.rebuyCount * (game.rebuyPrice ?? 0), 0))}
+                      {Math.round(
+                        confirmedParticipants.reduce(
+                          (sum, p) =>
+                            sum + p.rebuyCount * (game.rebuyPrice ?? 0),
+                          0,
+                        ),
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 </Table.Tbody>
@@ -643,15 +716,23 @@ export function GameManagementPage() {
                 <Table.Tbody>
                   <Table.Tr>
                     <Table.Td ta="center">
-                      <Text size="xs" c="dimmed">Invested</Text>
+                      <Text size="xs" c="dimmed">
+                        Invested
+                      </Text>
                     </Table.Td>
                     <Table.Td ta="center">
-                      <Text size="xs" c="dimmed">Chips End</Text>
+                      <Text size="xs" c="dimmed">
+                        Chips End
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
                   <Table.Tr>
-                    <Table.Td ta="center">{Math.round(bankCheck.totalBank)}</Table.Td>
-                    <Table.Td ta="center">{Math.round(bankCheck.totalPayout)}</Table.Td>
+                    <Table.Td ta="center">
+                      {Math.round(bankCheck.totalBank)}
+                    </Table.Td>
+                    <Table.Td ta="center">
+                      {Math.round(bankCheck.totalPayout)}
+                    </Table.Td>
                   </Table.Tr>
                 </Table.Tbody>
               </Table>
@@ -667,11 +748,17 @@ export function GameManagementPage() {
                 Difference: {Math.round(bankCheck.difference)}
               </Alert>
               <Text size="sm" c="dimmed">
-                Invested: {Math.round(bankCheck.totalBank)} | Chips End: {Math.round(bankCheck.totalPayout)} | Difference: {Math.round(bankCheck.difference)}
+                Invested: {Math.round(bankCheck.totalBank)} | Chips End:{' '}
+                {Math.round(bankCheck.totalPayout)} | Difference:{' '}
+                {Math.round(bankCheck.difference)}
               </Text>
             </>
           ) : (
-            <Alert color="green" variant="light" title="✓ Game balance is correct">
+            <Alert
+              color="green"
+              variant="light"
+              title="✓ Game balance is correct"
+            >
               Total Invested: {Math.round(bankCheck.totalBank)}
             </Alert>
           )}
@@ -679,7 +766,11 @@ export function GameManagementPage() {
       </Card>
 
       {/* Finish Game Button (outside Summary) */}
-      <Group justify={isMobile ? 'center' : 'flex-end'} mt="lg" w={isMobile ? '100%' : 'auto'}>
+      <Group
+        justify={isMobile ? 'center' : 'flex-end'}
+        mt="lg"
+        w={isMobile ? '100%' : 'auto'}
+      >
         <Button
           color={bankCheck.mismatch ? 'red' : 'green'}
           leftSection={<IconTrophy size={16} />}
@@ -705,13 +796,19 @@ export function GameManagementPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th ta="center">
-                  <Text size="xs" c="dimmed">Игрок</Text>
+                  <Text size="xs" c="dimmed">
+                    Игрок
+                  </Text>
                 </Table.Th>
                 <Table.Th ta="center">
-                  <Text size="xs" c="dimmed">Invested</Text>
+                  <Text size="xs" c="dimmed">
+                    Invested
+                  </Text>
                 </Table.Th>
                 <Table.Th ta="center">
-                  <Text size="xs" c="dimmed">Chips End</Text>
+                  <Text size="xs" c="dimmed">
+                    Chips End
+                  </Text>
                 </Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -727,9 +824,7 @@ export function GameManagementPage() {
                         .filter(Boolean)
                         .join(' ') || p.player.nickname}
                     </Table.Td>
-                    <Table.Td ta="center">
-                      {Math.round(invested)}
-                    </Table.Td>
+                    <Table.Td ta="center">{Math.round(invested)}</Table.Td>
                     <Table.Td ta="center">
                       {p.chipsEnd !== undefined ? (
                         <Text
@@ -783,10 +878,7 @@ export function GameManagementPage() {
             min={0}
           />
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              onClick={() => setChipsEndPlayerId(null)}
-            >
+            <Button variant="subtle" onClick={() => setChipsEndPlayerId(null)}>
               Cancel
             </Button>
             <Button
@@ -810,13 +902,11 @@ export function GameManagementPage() {
       >
         <Stack gap="md">
           <Alert color="red" variant="light" title="Внимание">
-            This will remove the player from the game. This action cannot be undone.
+            This will remove the player from the game. This action cannot be
+            undone.
           </Alert>
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              onClick={() => setRemovePlayerId(null)}
-            >
+            <Button variant="subtle" onClick={() => setRemovePlayerId(null)}>
               Отмена
             </Button>
             <Button
@@ -839,14 +929,9 @@ export function GameManagementPage() {
         size="sm"
       >
         <Stack gap="md">
-          <Text>
-            Add this player to the game?
-          </Text>
+          <Text>Add this player to the game?</Text>
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              onClick={() => setAddPlayerId(null)}
-            >
+            <Button variant="subtle" onClick={() => setAddPlayerId(null)}>
               Отмена
             </Button>
             <Button
@@ -879,7 +964,8 @@ export function GameManagementPage() {
                 </Stack>
               </Alert>
               <Text size="sm">
-                The game can still be finished, but the results may be incorrect.
+                The game can still be finished, but the results may be
+                incorrect.
               </Text>
               <Group justify="flex-end" gap="sm">
                 <Button
@@ -902,7 +988,9 @@ export function GameManagementPage() {
               <Alert color="green" variant="light" title="Game Balance Correct">
                 <Stack gap="xs">
                   <Text>Total Invested: {Math.round(bankCheck.totalBank)}</Text>
-                  <Text>Total Chips End: {Math.round(bankCheck.totalPayout)}</Text>
+                  <Text>
+                    Total Chips End: {Math.round(bankCheck.totalPayout)}
+                  </Text>
                   <Text>Total Payout: {Math.round(bankCheck.totalPayout)}</Text>
                 </Stack>
               </Alert>

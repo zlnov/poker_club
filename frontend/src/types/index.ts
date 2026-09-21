@@ -224,18 +224,38 @@ export interface GameEvent {
 
 /** Game result for a single participant. */
 export interface GameResult {
+  /** Game ID. */
+  gameId?: number
+  /** Game name. */
+  gameName?: string
+  /** Game type (cash, tournament). */
+  gameType?: string
+  /** Game start time. */
+  startTime?: string
   /** Player ID. */
   playerId: number
+  /** Player name. */
+  playerName: string
+  /** Place. */
+  place?: number
   /** Buy-in count. */
   buyInCount: number
   /** Rebuy count. */
   rebuyCount: number
+  /** Buy-in amount. */
+  buyInAmount: number
+  /** Rebuy amount. */
+  rebuyAmount: number
+  /** Total invested (buy-in + rebuy). */
+  totalInvested: number
   /** Chips end. */
   chipsEnd?: number
   /** Payout amount. */
   payoutAmount?: number
-  /** Place. */
-  place?: number
+  /** Profit. */
+  profit: number
+  /** ROI percentage. */
+  roi: number
   /** Status. */
   status: string
 }
@@ -260,6 +280,8 @@ export interface PlayerStatistics {
   totalBuyInAmount: number
   /** Total rebuy amount. */
   totalRebuyAmount: number
+  /** Total rebuy count. */
+  totalRebuyCount: number
   /** Total invested (buy-in + rebuy). */
   totalInvested: number
   /** Total chips won/lost. */
@@ -282,6 +304,8 @@ export interface PlayerStatistics {
   winrate: number
   /** Average place. */
   avgPlace: number
+  /** Games in profit (count of finished games where profit > 0). */
+  gamesInProfit: number
 }
 
 /** Statistics for a club. */
@@ -302,6 +326,66 @@ export interface ClubStatistics {
   totalBank: number
   /** Average game duration. */
   averageGameDuration: string
+}
+
+/** Club member statistics. */
+export interface ClubMemberStatistics {
+  /** Player ID. */
+  playerId: number
+  /** Player name. */
+  playerName: string
+  /** Number of games played. */
+  games: number
+  /** Total invested. */
+  totalInvested: number
+  /** Profit. */
+  profit: number
+  /** ROI percentage. */
+  roi: number
+  /** Winrate percentage. */
+  winrate: number
+  /** Average place. */
+  avgPlace: number
+  /** Games won. */
+  gamesWon: number
+}
+
+/** Player game history entry. */
+export interface PlayerGameHistory {
+  /** Game ID. */
+  gameId: number
+  /** Game name. */
+  gameName: string
+  /** Game type (cash, tournament). */
+  gameType?: string
+  /** Game start time. */
+  startTime?: string
+  /** Player ID. */
+  playerId: number
+  /** Player name. */
+  playerName: string
+  /** Place. */
+  place?: number
+  /** Buy-in count. */
+  buyInCount: number
+  /** Rebuy count. */
+  rebuyCount: number
+  /** Buy-in amount. */
+  buyInAmount: number
+  /** Rebuy amount. */
+  rebuyAmount: number
+  /** Total invested. */
+  totalInvested: number
+  /** Chips end. */
+  chipsEnd?: number
+  /** Payout amount. */
+  payoutAmount?: number
+  /** Profit. */
+  profit: number
+  /** ROI percentage. */
+  roi: number
+  /** Status. */
+  status: string
 }
 
 /** Current authenticated user. */

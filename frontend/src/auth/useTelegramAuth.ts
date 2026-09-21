@@ -32,7 +32,7 @@ export function useTelegramAuth() {
   // Track whether we've already attempted Telegram authentication
   const authAttemptedRef = useRef(false)
 
-   const authenticateWithTelegram = useCallback(async () => {
+  const authenticateWithTelegram = useCallback(async () => {
     // Prevent duplicate authentication attempts
     if (authAttemptedRef.current) {
       return

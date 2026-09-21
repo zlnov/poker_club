@@ -148,7 +148,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Diagnostic: log every state change
   useEffect(() => {
-    console.log('[DIAG AuthProvider] state changed:', state, 'user:', user?.id ?? null)
+    console.log(
+      '[DIAG AuthProvider] state changed:',
+      state,
+      'user:',
+      user?.id ?? null,
+    )
   }, [state, user])
 
   useEffect(() => {
@@ -174,46 +179,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * Called after successful login and on app initialization.
    * Maps Backend snake_case response to frontend camelCase model.
    */
-   const fetchCurrentUser =
-     useCallback(async (): Promise<CurrentUser | null> => {
-       console.log('[DIAG fetchCurrentUser] called, token:', tokenManager.getAccessToken() ? 'present' : 'null')
-       try {
-         const response = await apiClient.get<{
-           id: number
-           first_name: string
-           last_name: string
-           nickname: string
-           tg_user_id?: number
-           created_at: string
-           updated_at: string
-         }>('/me')
+  const fetchCurrentUser =
+    useCallback(async (): Promise<CurrentUser | null> => {
+      console.log(
+        '[DIAG fetchCurrentUser] called, token:',
+        tokenManager.getAccessToken() ? 'present' : 'null',
+      )
+      try {
+        const response = await apiClient.get<{
+          id: number
+          first_name: string
+          last_name: string
+          nickname: string
+          tg_user_id?: number
+          created_at: string
+          updated_at: string
+        }>('/me')
 
-         // Map Backend snake_case response to frontend camelCase model
-         const backendUser = response.data
-         console.log('[DIAG fetchCurrentUser] success:', backendUser.id)
-         return {
-           id: backendUser.id,
-           firstName: backendUser.first_name,
-           lastName: backendUser.last_name,
-           nickname: backendUser.nickname,
-           tgUserId: backendUser.tg_user_id,
-           createdAt: backendUser.created_at,
-           updatedAt: backendUser.updated_at,
-         }
-       } catch (error) {
-         console.log('[DIAG fetchCurrentUser] error:', error)
-         // If 401, user is not authenticated
-         if (
-           error instanceof Error &&
-           'statusCode' in error &&
-           error.statusCode === 401
-         ) {
-           return null
-         }
-         // For other errors, re-throw
-         throw error
-       }
-     }, [apiClient])
+        // Map Backend snake_case response to frontend camelCase model
+        const backendUser = response.data
+        console.log('[DIAG fetchCurrentUser] success:', backendUser.id)
+        return {
+          id: backendUser.id,
+          firstName: backendUser.first_name,
+          lastName: backendUser.last_name,
+          nickname: backendUser.nickname,
+          tgUserId: backendUser.tg_user_id,
+          createdAt: backendUser.created_at,
+          updatedAt: backendUser.updated_at,
+        }
+      } catch (error) {
+        console.log('[DIAG fetchCurrentUser] error:', error)
+        // If 401, user is not authenticated
+        if (
+          error instanceof Error &&
+          'statusCode' in error &&
+          error.statusCode === 401
+        ) {
+          return null
+        }
+        // For other errors, re-throw
+        throw error
+      }
+    }, [apiClient])
 
   /**
    * Initializes authentication state on app load.
@@ -223,11 +231,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     let mounted = true
 
     async function initializeAuth() {
-      console.log('[DIAG initializeAuth] started, tokenManager.accessToken:', tokenManager.getAccessToken() ? 'present' : 'null')
+      console.log(
+        '[DIAG initializeAuth] started, tokenManager.accessToken:',
+        tokenManager.getAccessToken() ? 'present' : 'null',
+      )
       setState('loading')
       try {
         const currentUser = await fetchCurrentUser()
-        console.log('[DIAG initializeAuth] fetchCurrentUser result:', currentUser ? `user ${currentUser.id}` : 'null')
+        console.log(
+          '[DIAG initializeAuth] fetchCurrentUser result:',
+          currentUser ? `user ${currentUser.id}` : 'null',
+        )
         if (mounted) {
           if (currentUser) {
             setUser(currentUser)
@@ -296,42 +310,42 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * Login with Telegram initData (Telegram Mini App mode).
    * Calls POST /api/v1/auth/telegram with initData.
    */
-   const loginWithTelegram = useCallback(
-     async (initData: string): Promise<void> => {
-       console.log('[DIAG loginWithTelegram] started')
-       setIsLoading(true)
-       try {
-         const response = await apiClient.post<{
-           access_token: string
-           refresh_token: string
-           token_type: string
-         }>('/auth/telegram', {
-           body: { init_data: initData },
-           skipAuth: true,
-         })
+  const loginWithTelegram = useCallback(
+    async (initData: string): Promise<void> => {
+      console.log('[DIAG loginWithTelegram] started')
+      setIsLoading(true)
+      try {
+        const response = await apiClient.post<{
+          access_token: string
+          refresh_token: string
+          token_type: string
+        }>('/auth/telegram', {
+          body: { init_data: initData },
+          skipAuth: true,
+        })
 
-         // Map Backend snake_case response to runtime token storage
-         tokenManager.setTokens(
-           response.data.access_token,
-           response.data.refresh_token,
-         )
-         console.log('[DIAG loginWithTelegram] tokens set')
+        // Map Backend snake_case response to runtime token storage
+        tokenManager.setTokens(
+          response.data.access_token,
+          response.data.refresh_token,
+        )
+        console.log('[DIAG loginWithTelegram] tokens set')
 
-         // Fetch current user with the new access token
-         const currentUser = await fetchCurrentUser()
-         if (currentUser) {
-           setUser(currentUser)
-           setState('authenticated')
-           console.log('[DIAG loginWithTelegram] success, state=authenticated')
-         } else {
-           throw new Error('Failed to fetch user after Telegram login')
-         }
-       } finally {
-         setIsLoading(false)
-       }
-     },
-     [apiClient, fetchCurrentUser, tokenManager],
-   )
+        // Fetch current user with the new access token
+        const currentUser = await fetchCurrentUser()
+        if (currentUser) {
+          setUser(currentUser)
+          setState('authenticated')
+          console.log('[DIAG loginWithTelegram] success, state=authenticated')
+        } else {
+          throw new Error('Failed to fetch user after Telegram login')
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [apiClient, fetchCurrentUser, tokenManager],
+  )
 
   /**
    * Logout current user.

@@ -33,10 +33,7 @@ import {
 } from '@mantine/core'
 import { IconArrowLeft } from '@tabler/icons-react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  PageContainer,
-  PageHeader,
-} from '../components/ui'
+import { PageContainer, PageHeader } from '../components/ui'
 import {
   useGame,
   useGameMonitor,
@@ -75,13 +72,17 @@ export function GameRebuyPage() {
 
   // Modal states
   const [addRebuyPlayerId, setAddRebuyPlayerId] = useState<number | null>(null)
-  const [changeRebuyPlayerId, setChangeRebuyPlayerId] = useState<number | null>(null)
+  const [changeRebuyPlayerId, setChangeRebuyPlayerId] = useState<number | null>(
+    null,
+  )
   const [changeRebuyValue, setChangeRebuyValue] = useState<number>(0)
 
   // Use monitor data if available (has full participant info), otherwise use participants
   const displayParticipants = monitorData?.participants ?? participants ?? []
   // Only confirmed participants are shown in game data tables
-  const confirmedParticipants = displayParticipants.filter((p) => p.status === 'confirmed')
+  const confirmedParticipants = displayParticipants.filter(
+    (p) => p.status === 'confirmed',
+  )
 
   const handleAddRebuy = async () => {
     if (!addRebuyPlayerId) return
@@ -168,20 +169,36 @@ export function GameRebuyPage() {
         </Title>
         <Stack gap="sm">
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Club</Text>
-            <Text size="sm" fw={500}>{club?.name ?? '—'}</Text>
+            <Text size="sm" c="dimmed">
+              Club
+            </Text>
+            <Text size="sm" fw={500}>
+              {club?.name ?? '—'}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Game ID</Text>
-            <Text size="sm" fw={500}>{game.id}</Text>
+            <Text size="sm" c="dimmed">
+              Game ID
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.id}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Type</Text>
-            <Text size="sm" fw={500}>{game.gameType}</Text>
+            <Text size="sm" c="dimmed">
+              Type
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.gameType}
+            </Text>
           </Group>
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Status</Text>
-            <Badge color="green" variant="light">{game.status}</Badge>
+            <Text size="sm" c="dimmed">
+              Status
+            </Text>
+            <Badge color="green" variant="light">
+              {game.status}
+            </Badge>
           </Group>
         </Stack>
       </Card>
@@ -192,17 +209,21 @@ export function GameRebuyPage() {
           Rebuy Configuration
         </Title>
         <Group gap="sm" justify="space-between">
-          <Text size="sm" c="dimmed">Rebuy Price</Text>
+          <Text size="sm" c="dimmed">
+            Rebuy Price
+          </Text>
           <Text size="sm" fw={500}>
-            {game.rebuyAllowed
-              ? Math.round(rebuyPrice)
-              : 'Not allowed'}
+            {game.rebuyAllowed ? Math.round(rebuyPrice) : 'Not allowed'}
           </Text>
         </Group>
         {game.maxRebuys !== undefined && (
           <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">Max Rebuys</Text>
-            <Text size="sm" fw={500}>{game.maxRebuys}</Text>
+            <Text size="sm" c="dimmed">
+              Max Rebuys
+            </Text>
+            <Text size="sm" fw={500}>
+              {game.maxRebuys}
+            </Text>
           </Group>
         )}
       </Card>
@@ -221,13 +242,19 @@ export function GameRebuyPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>
-                  <Text size="xs" c="dimmed">Игрок</Text>
+                  <Text size="xs" c="dimmed">
+                    Игрок
+                  </Text>
                 </Table.Th>
                 <Table.Th ta="center">
-                  <Text size="xs" c="dimmed">Rebuy</Text>
+                  <Text size="xs" c="dimmed">
+                    Rebuy
+                  </Text>
                 </Table.Th>
                 <Table.Th ta="center">
-                  <Text size="xs" c="dimmed">Actions</Text>
+                  <Text size="xs" c="dimmed">
+                    Actions
+                  </Text>
                 </Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -246,7 +273,9 @@ export function GameRebuyPage() {
                         <Text
                           size="sm"
                           c="violet"
-                          style={{ cursor: game.rebuyAllowed ? 'pointer' : 'default' }}
+                          style={{
+                            cursor: game.rebuyAllowed ? 'pointer' : 'default',
+                          }}
                           onClick={() => {
                             if (game.rebuyAllowed) {
                               setChangeRebuyPlayerId(p.player.id)
@@ -308,13 +337,15 @@ export function GameRebuyPage() {
                 <Table.Td fw={700}>TOTAL</Table.Td>
                 <Table.Td fw={700} ta="center">
                   {confirmedParticipants.reduce(
-                    (sum, p) => sum + p.rebuyCount, 0
+                    (sum, p) => sum + p.rebuyCount,
+                    0,
                   )}
                   {' / '}
                   {Math.round(
                     confirmedParticipants.reduce(
-                      (sum, p) => sum + p.rebuyCount * rebuyPrice, 0
-                    )
+                      (sum, p) => sum + p.rebuyCount * rebuyPrice,
+                      0,
+                    ),
                   )}
                 </Table.Td>
                 <Table.Td />
@@ -333,33 +364,25 @@ export function GameRebuyPage() {
         size="sm"
       >
         <Stack gap="md">
-          {addRebuyPlayerId !== null && (() => {
-            const participant = displayParticipants.find(
-              (p) => p.player.id === addRebuyPlayerId,
-            )
-            const currentCount = participant
-              ? participant.rebuyCount
-              : 0
-            const newCount = currentCount + 1
-            return (
-              <>
-                <Alert color="blue" variant="light" title="Add Rebuy">
-                  Add a rebuy for this player?
-                </Alert>
-                <Text size="sm">
-                  Current: {currentCount}
-                </Text>
-                <Text size="sm">
-                  New: {newCount}
-                </Text>
-              </>
-            )
-          })()}
+          {addRebuyPlayerId !== null &&
+            (() => {
+              const participant = displayParticipants.find(
+                (p) => p.player.id === addRebuyPlayerId,
+              )
+              const currentCount = participant ? participant.rebuyCount : 0
+              const newCount = currentCount + 1
+              return (
+                <>
+                  <Alert color="blue" variant="light" title="Add Rebuy">
+                    Add a rebuy for this player?
+                  </Alert>
+                  <Text size="sm">Current: {currentCount}</Text>
+                  <Text size="sm">New: {newCount}</Text>
+                </>
+              )
+            })()}
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              onClick={() => setAddRebuyPlayerId(null)}
-            >
+            <Button variant="subtle" onClick={() => setAddRebuyPlayerId(null)}>
               Cancel
             </Button>
             <Button
@@ -382,29 +405,30 @@ export function GameRebuyPage() {
         size="sm"
       >
         <Stack gap="md">
-          {changeRebuyPlayerId !== null && (() => {
-            const participant = displayParticipants.find(
-              (p) => p.player.id === changeRebuyPlayerId,
-            )
-            const oldCount = participant
-              ? participant.rebuyCount
-              : 0
-            return (
-              <>
-                <Alert color="blue" variant="light" title="Change Rebuy">
-                  Rebuy: {oldCount}
-                </Alert>
-                <NumberInput
-                  label="New Rebuy Count"
-                  placeholder="0"
-                  value={changeRebuyValue}
-                  onChange={(value) => setChangeRebuyValue(Number(value) || 0)}
-                  allowNegative={false}
-                  min={0}
-                />
-              </>
-            )
-          })()}
+          {changeRebuyPlayerId !== null &&
+            (() => {
+              const participant = displayParticipants.find(
+                (p) => p.player.id === changeRebuyPlayerId,
+              )
+              const oldCount = participant ? participant.rebuyCount : 0
+              return (
+                <>
+                  <Alert color="blue" variant="light" title="Change Rebuy">
+                    Rebuy: {oldCount}
+                  </Alert>
+                  <NumberInput
+                    label="New Rebuy Count"
+                    placeholder="0"
+                    value={changeRebuyValue}
+                    onChange={(value) =>
+                      setChangeRebuyValue(Number(value) || 0)
+                    }
+                    allowNegative={false}
+                    min={0}
+                  />
+                </>
+              )
+            })()}
           <Group justify="flex-end" gap="sm">
             <Button
               variant="subtle"
@@ -412,10 +436,7 @@ export function GameRebuyPage() {
             >
               Cancel
             </Button>
-            <Button
-              color="green"
-              onClick={handleSaveChangeRebuy}
-            >
+            <Button color="green" onClick={handleSaveChangeRebuy}>
               Save
             </Button>
           </Group>

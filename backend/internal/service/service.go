@@ -2664,3 +2664,225 @@ func (s *Service) GetFinishedGameResults(ctx context.Context, tgUserID int64, cl
 
 	return game, participants, nil
 }
+
+// GetGameResultsWithCalculations returns a finished game and all its participants
+// with calculated result fields (profit, ROI, buy_in_amount, rebuy_amount, total_invested).
+// This reuses the existing game data and calculates derived metrics in the service layer.
+func (s *Service) GetGameResultsWithCalculations(ctx context.Context, tgUserID int64, clubID int64, gameID int64) (*domain.Game, []*domain.GameResult, error) {
+	game, participants, err := s.GetFinishedGameResults(ctx, tgUserID, clubID, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rebuyPrice := 0.0
+	if game.RebuyPrice != nil {
+		rebuyPrice = *game.RebuyPrice
+	}
+
+	results := make([]*domain.GameResult, 0, len(participants))
+	for _, p := range participants {
+		buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+		rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+		totalInvested := buyInAmount + rebuyAmount
+
+		var payoutAmount float64
+		if p.PayoutAmount != nil {
+			payoutAmount = *p.PayoutAmount
+		}
+
+		profit := payoutAmount - totalInvested
+
+		var roi float64
+		if totalInvested > 0 {
+			roi = (profit / totalInvested) * 100
+		}
+
+		var place int
+		if p.Place != nil {
+			place = *p.Place
+		}
+
+		var chipsEnd float64
+		if p.ChipsEnd != nil {
+			chipsEnd = *p.ChipsEnd
+		}
+
+		playerName := p.Player.Nickname
+		if playerName == "" {
+			playerName = p.Player.FirstName
+			if p.Player.LastName != "" {
+				playerName += " " + p.Player.LastName
+			}
+		}
+
+		gameName := fmt.Sprintf("%s %d", game.GameType, game.ID)
+
+		results = append(results, &domain.GameResult{
+			GameID:        game.ID,
+			GameName:      gameName,
+			PlayerID:      p.PlayerID,
+			PlayerName:    playerName,
+			Place:         place,
+			BuyInCount:    p.BuyInCount,
+			RebuyCount:    p.RebuyCount,
+			BuyInAmount:   buyInAmount,
+			RebuyAmount:   rebuyAmount,
+			TotalInvested: totalInvested,
+			ChipsEnd:      chipsEnd,
+			PayoutAmount:  payoutAmount,
+			Profit:        profit,
+			ROI:           roi,
+			Status:        p.Status,
+			GameType:      game.GameType,
+			StartTime:     game.StartTime,
+		})
+	}
+
+	return game, results, nil
+}
+
+// GetPlayerStatisticsWithGameType returns player statistics filtered by game_type.
+// It calculates derived metrics on-the-fly from game_participants.
+func (s *Service) GetPlayerStatisticsWithGameType(ctx context.Context, playerID int64, clubID int64, gameType string) (*domain.PlayerStatisticsView, error) {
+	stats, err := s.repos.PlayerStatistics.GetByPlayerAndClub(ctx, playerID, clubID)
+	if err != nil {
+		// No cached statistics — return a zero-value view with derived metrics.
+		stats = &domain.PlayerStatistics{
+			PlayerID: playerID,
+			ClubID:   clubID,
+		}
+	}
+
+	// Calculate derived metrics at read time from game_participants, filtered by game_type.
+	totalBuyInCount, avgPlace, gamesInProfit, err := s.repos.GameParticipants.GetPlayerFinishedStatsByGameType(ctx, playerID, clubID, gameType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get player finished stats by game type: %w", err)
+	}
+
+	var winrate float64
+	if stats.TotalGames > 0 {
+		winrate = float64(stats.GamesWon) / float64(stats.TotalGames) * 100
+	}
+
+	return &domain.PlayerStatisticsView{
+		PlayerStatistics: *stats,
+		TotalBuyInCount:  totalBuyInCount,
+		Winrate:          winrate,
+		AvgPlace:         avgPlace,
+		GamesInProfit:    gamesInProfit,
+	}, nil
+}
+
+// GetClubMemberStatistics returns aggregated statistics for each club member
+// filtered by game_type. Statistics are calculated on-the-fly from game_participants.
+func (s *Service) GetClubMemberStatistics(ctx context.Context, tgUserID int64, clubID int64, gameType string) ([]*domain.ClubMemberStatistics, error) {
+	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, player.ID); err != nil {
+		return nil, errors.New("access denied: user is not a member of this club")
+	}
+
+	return s.repos.PlayerStatistics.GetClubMemberStatisticsByGameType(ctx, clubID, gameType)
+}
+
+// GetPlayerGameHistory returns the game history for a player filtered by game_type.
+// Only finished games are included.
+func (s *Service) GetPlayerGameHistory(ctx context.Context, tgUserID int64, clubID int64, playerID int64, gameType string) ([]*domain.GameResult, error) {
+	// Verify the requesting user is a member of the club.
+	if _, err := s.repos.ClubMembers.GetByClubAndPlayer(ctx, clubID, playerID); err != nil {
+		return nil, errors.New("access denied: user is not a member of this club")
+	}
+
+	// Get all finished games for the club of the specified type
+	games, err := s.repos.Games.GetFinishedByClub(ctx, clubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get finished games: %w", err)
+	}
+
+	var results []*domain.GameResult
+
+	for _, game := range games {
+		if game.GameType != gameType {
+			continue
+		}
+
+		participants, err := s.repos.GameParticipants.GetByGameWithPlayers(ctx, game.ID)
+		if err != nil {
+			s.log.Warn("failed to get participants for game during player history",
+				"error", err, "game_id", game.ID)
+			continue
+		}
+
+		rebuyPrice := 0.0
+		if game.RebuyPrice != nil {
+			rebuyPrice = *game.RebuyPrice
+		}
+
+		for _, p := range participants {
+			if p.PlayerID != playerID {
+				continue
+			}
+
+			buyInAmount := float64(p.BuyInCount) * game.BuyInAmount
+			rebuyAmount := float64(p.RebuyCount) * rebuyPrice
+			totalInvested := buyInAmount + rebuyAmount
+
+			var payoutAmount float64
+			if p.PayoutAmount != nil {
+				payoutAmount = *p.PayoutAmount
+			}
+
+			profit := payoutAmount - totalInvested
+
+			var roi float64
+			if totalInvested > 0 {
+				roi = (profit / totalInvested) * 100
+			}
+
+			var place int
+			if p.Place != nil {
+				place = *p.Place
+			}
+
+			var chipsEnd float64
+			if p.ChipsEnd != nil {
+				chipsEnd = *p.ChipsEnd
+			}
+
+			playerName := p.Player.Nickname
+			if playerName == "" {
+				playerName = p.Player.FirstName
+				if p.Player.LastName != "" {
+					playerName += " " + p.Player.LastName
+				}
+			}
+
+			gameName := fmt.Sprintf("%s %d", game.GameType, game.ID)
+
+			results = append(results, &domain.GameResult{
+				GameID:        game.ID,
+				GameName:      gameName,
+				PlayerID:      p.PlayerID,
+				PlayerName:    playerName,
+				Place:         place,
+				BuyInCount:    p.BuyInCount,
+				RebuyCount:    p.RebuyCount,
+				BuyInAmount:   buyInAmount,
+				RebuyAmount:   rebuyAmount,
+				TotalInvested: totalInvested,
+				ChipsEnd:      chipsEnd,
+				PayoutAmount:  payoutAmount,
+				Profit:        profit,
+				ROI:           roi,
+				Status:        p.Status,
+				GameType:      game.GameType,
+				StartTime:     game.StartTime,
+			})
+		}
+	}
+
+	return results, nil
+}

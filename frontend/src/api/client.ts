@@ -143,7 +143,7 @@ export class ApiClient {
    * - Parses JSON responses.
    * - Throws ApiClientError for non-2xx responses.
    */
-   async request<T = unknown>(
+  async request<T = unknown>(
     path: string,
     options: ApiRequestOptions = {},
   ): Promise<ApiResponse<T>> {

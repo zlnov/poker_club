@@ -72,6 +72,7 @@ type GameParticipantRepository interface {
 	RegisterRebuy(ctx context.Context, gameID, playerID int64, rebuyCount int) error
 	UpdateChipsEnd(ctx context.Context, gameID, playerID int64, chipsEnd float64) error
 	GetPlayerFinishedStats(ctx context.Context, playerID, clubID int64) (totalBuyInCount int, avgPlace float64, err error)
+	GetPlayerFinishedStatsByGameType(ctx context.Context, playerID, clubID int64, gameType string) (totalBuyInCount int, avgPlace float64, gamesInProfit int, err error)
 }
 
 // EventRepository defines operations for event log persistence.
@@ -89,6 +90,7 @@ type PlayerStatisticsRepository interface {
 	GetByPlayerAndClub(ctx context.Context, playerID, clubID int64) (*PlayerStatistics, error)
 	GetByClub(ctx context.Context, clubID int64) ([]*PlayerStatistics, error)
 	Upsert(ctx context.Context, stats *PlayerStatistics) error
+	GetClubMemberStatisticsByGameType(ctx context.Context, clubID int64, gameType string) ([]*ClubMemberStatistics, error)
 }
 
 // RefreshTokenRepository defines operations for refresh token persistence.

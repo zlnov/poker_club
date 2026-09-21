@@ -35,6 +35,7 @@ import {
   GameManagementPage,
   GameRebuyPage,
   GameChipsPage,
+  PlayerStatisticsPage,
   ProfilePage,
 } from '../pages'
 import {
@@ -108,6 +109,10 @@ export const router = createBrowserRouter([
               {
                 path: 'statistics',
                 element: <ClubStatistics />,
+              },
+              {
+                path: 'statistics/player/:playerId',
+                element: <PlayerStatisticsPage />,
               },
               {
                 path: 'settings',

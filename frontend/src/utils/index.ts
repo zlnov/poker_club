@@ -117,6 +117,27 @@ export function formatDate(isoDate: string): string {
 }
 
 /**
+ * Formats a date string as dd.mm.yyyy (date only, no time).
+ *
+ * @param isoDate ISO 8601 date string from the Backend.
+ * @returns Formatted date string in dd.mm.yyyy format.
+ */
+export function formatDateShort(isoDate: string): string {
+  if (!isoDate) {
+    return '—'
+  }
+  try {
+    const date = new Date(isoDate)
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}.${month}.${year}`
+  } catch {
+    return '—'
+  }
+}
+
+/**
  * Formats a date string as dd.mm.yyyy hh:mm.
  *
  * @param isoDate ISO 8601 date string from the Backend.

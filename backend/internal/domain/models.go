@@ -136,6 +136,41 @@ type PlayerStatisticsView struct {
 	TotalBuyInCount int     // SUM(buy_in_count) across finished games
 	Winrate         float64 // (games_won / total_games) × 100%
 	AvgPlace        float64 // AVG(place) across finished games
+	GamesInProfit   int     // COUNT(finished games WHERE profit > 0)
+}
+
+// GameResult represents the calculated result of a single participant in a finished game.
+type GameResult struct {
+	GameID        int64
+	GameName      string
+	PlayerID      int64
+	PlayerName    string
+	Place         int
+	BuyInCount    int
+	RebuyCount    int
+	BuyInAmount   float64
+	RebuyAmount   float64
+	TotalInvested float64
+	ChipsEnd      float64
+	PayoutAmount  float64
+	Profit        float64
+	ROI           float64
+	Status        string
+	GameType      string
+	StartTime     time.Time
+}
+
+// ClubMemberStatistics represents aggregated statistics for a club member.
+type ClubMemberStatistics struct {
+	PlayerID      int64
+	PlayerName    string
+	Games         int
+	TotalInvested float64
+	Profit        float64
+	ROI           float64
+	Winrate       float64
+	AvgPlace      float64
+	GamesWon      int
 }
 
 // ClubStatistics represents aggregate statistics for a club.
