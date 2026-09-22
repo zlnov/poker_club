@@ -701,10 +701,10 @@ export function useFinishGame() {
       return gameId
     },
     onSuccess: (gameId) => {
-    queryClient.invalidateQueries({ queryKey: gameKeys.detail(gameId) })
-    queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
-    // queryClient.invalidateQueries({ queryKey: monitorKeys.detail(gameId) })
-    queryClient.invalidateQueries({ queryKey: resultKeys.detail(gameId) })
+      queryClient.invalidateQueries({ queryKey: gameKeys.detail(gameId) })
+      queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
+      // queryClient.invalidateQueries({ queryKey: monitorKeys.detail(gameId) })
+      queryClient.invalidateQueries({ queryKey: resultKeys.detail(gameId) })
     },
   })
 }

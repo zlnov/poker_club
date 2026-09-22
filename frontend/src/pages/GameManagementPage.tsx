@@ -73,7 +73,7 @@ export function GameManagementPage() {
   const navigate = useNavigate()
   const gameIdNum = gameId ? parseInt(gameId, 10) : 0
 
-  const { data: game, refetch: refetchGame } = useGame(gameIdNum)
+  const { data: game } = useGame(gameIdNum)
   const { data: monitorData } = useGameMonitor(gameIdNum)
   const { data: participants, refetch: refetchParticipants } =
     useGameParticipants(gameIdNum)

@@ -31,7 +31,6 @@ import {
   Alert,
   NumberInput,
   Checkbox,
-  SimpleGrid,
   Grid,
   Table,
 } from '@mantine/core'
@@ -81,13 +80,14 @@ import {
 } from '../features'
 import { useClub, useClubMembers } from '../features'
 import { useAuth } from '../auth'
-import { formatCurrency, formatDate, formatDuration } from '../utils'
 import { ApiClientError } from '../api'
 import type { GameBankCheck } from '../types'
 import { notifications } from '@mantine/notifications'
 import type { GameStatus, GameType, ClubMemberRole, GameConfig } from '../types'
 import { GameResultsTable } from '../components/statistics/GameResultsTable'
 import { GameResultsMobile } from '../components/statistics/GameResultsMobile'
+import { GameConfigurationCards } from '../components/GameConfigurationCards'
+import { GameConfigurationFinished } from '../components/GameConfigurationFinished'
 
 // --- Status helpers ---
 
@@ -644,136 +644,16 @@ export function GamePage() {
         )}
       </Card>
 
-      {/* Game Configuration */}
-      <Card mt="lg" padding="lg" radius="md" withBorder>
-        <Group justify="space-between" mb="md">
-          <Title order={4} mb={0}>
-            Game Configuration
-          </Title>
-          {isPlanned && canManageGame && (
-            <Button
-              leftSection={<IconEdit size={16} />}
-              variant="subtle"
-              size="sm"
-              onClick={() => setAdjustGameOpen(true)}
-            >
-              Adjust Game
-            </Button>
-          )}
-        </Group>
-        <Stack gap="sm">
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Currency
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.currency}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Money Model
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.moneyModel}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Chip Value
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.chipValue}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Buy-in Amount
-            </Text>
-            <Text size="sm" fw={500}>
-              {formatCurrency(game.buyInAmount, game.currency)}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Rebuy Allowed
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.rebuyAllowed ? 'Yes' : 'No'}
-            </Text>
-          </Group>
-          {game.rebuyAllowed && (
-            <>
-              <Group gap="sm" justify="space-between">
-                <Text size="sm" c="dimmed">
-                  Rebuy Price
-                </Text>
-                <Text size="sm" fw={500}>
-                  {game.rebuyPrice !== undefined
-                    ? formatCurrency(game.rebuyPrice, game.currency)
-                    : '—'}
-                </Text>
-              </Group>
-              <Group gap="sm" justify="space-between">
-                <Text size="sm" c="dimmed">
-                  Max Rebuys
-                </Text>
-                <Text size="sm" fw={500}>
-                  {game.maxRebuys !== undefined
-                    ? game.maxRebuys === 0
-                      ? 'Unlimited'
-                      : game.maxRebuys
-                    : '—'}
-                </Text>
-              </Group>
-            </>
-          )}
-          {game.durationSeconds !== undefined && game.durationSeconds > 0 && (
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Duration
-              </Text>
-              <Text size="sm" fw={500}>
-                {formatDuration(game.durationSeconds)}
-              </Text>
-            </Group>
-          )}
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Scheduled Start
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.startTime ? formatDate(game.startTime) : '—'}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Min / Max Players
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.minPlayers} / {game.maxPlayers}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Ranking Primary
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.rankingPrimary}
-            </Text>
-          </Group>
-          {game.rankingSecondary && (
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Ranking Secondary
-              </Text>
-              <Text size="sm" fw={500}>
-                {game.rankingSecondary}
-              </Text>
-            </Group>
-          )}
-        </Stack>
-      </Card>
+      {/* Game Configuration (Cards for Planned/Active/Canceled) */}
+      {game.status !== 'finished' && (
+        <GameConfigurationCards
+          game={game}
+          clubName={club?.name}
+          isPlanned={isPlanned}
+          canManageGame={canManageGame}
+          onAdjustGame={() => setAdjustGameOpen(true)}
+        />
+      )}
 
       {/* Banker */}
       <Card mt="lg" padding="lg" radius="md" withBorder>
@@ -803,82 +683,24 @@ export function GamePage() {
         </Group>
       </Card>
 
+      {/* Game Configuration (Finished games) */}
+      {game.status === 'finished' && gameResultsData && (
+        <GameConfigurationFinished
+          game={game}
+          bankerName={bankerName}
+          gameResults={gameResultsData.results || []}
+          isPlanned={isPlanned}
+          canManageGame={canManageGame}
+          onAdjustGame={() => setAdjustGameOpen(true)}
+        />
+      )}
+
       {/* Game Results (finished games only) */}
       {game.status === 'finished' && gameResultsData && (
         <Card mt="lg" padding="lg" radius="md" withBorder>
           <Title order={4} mb="md">
             Results
           </Title>
-
-          {/* Game Information */}
-          <SimpleGrid cols={2} spacing="md" mb="md">
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Игра
-              </Text>
-              <Text size="sm" fw={500}>
-                {game.gameType === 'cash' ? 'Cash' : 'Tournament'}
-              </Text>
-            </Group>
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Дата
-              </Text>
-              <Text size="sm" fw={500}>
-                {game.startTime ? formatDate(game.startTime) : '—'}
-              </Text>
-            </Group>
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Продолжительность
-              </Text>
-              <Text size="sm" fw={500}>
-                {game.durationSeconds && game.durationSeconds > 0
-                  ? formatDuration(game.durationSeconds)
-                  : '—'}
-              </Text>
-            </Group>
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Участников
-              </Text>
-              <Text size="sm" fw={500}>
-                {participants
-                  ? participants.filter((p) => p.status === 'confirmed').length
-                  : 0}
-              </Text>
-            </Group>
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Банкир
-              </Text>
-              <Text size="sm" fw={500}>
-                {bankerName}
-              </Text>
-            </Group>
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Валюта
-              </Text>
-              <Text size="sm" fw={500}>
-                {game.currency}
-              </Text>
-            </Group>
-            <Group gap="sm" justify="space-between">
-              <Text size="sm" c="dimmed">
-                Банк
-              </Text>
-              <Text size="sm" fw={500}>
-                {formatCurrency(
-                  (gameResultsData.results || []).reduce(
-                    (sum, r) => sum + r.totalInvested,
-                    0,
-                  ),
-                  game.currency,
-                )}
-              </Text>
-            </Group>
-          </SimpleGrid>
 
           {/* Results Table */}
           {!isMobile ? (
@@ -1155,47 +977,6 @@ export function GamePage() {
           )}
         </>
       )}
-
-      {/* Game Metadata */}
-      <Card mt="lg" padding="lg" radius="md" withBorder>
-        <Title order={4} mb="md">
-          Game Information
-        </Title>
-        <Stack gap="sm">
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Game ID
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.id}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Club ID
-            </Text>
-            <Text size="sm" fw={500}>
-              {game.clubId}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Created
-            </Text>
-            <Text size="sm" fw={500}>
-              {formatDate(game.createdAt)}
-            </Text>
-          </Group>
-          <Group gap="sm" justify="space-between">
-            <Text size="sm" c="dimmed">
-              Last Updated
-            </Text>
-            <Text size="sm" fw={500}>
-              {formatDate(game.updatedAt)}
-            </Text>
-          </Group>
-        </Stack>
-      </Card>
 
       {/* Cancel Game Confirmation Modal */}
       <Modal

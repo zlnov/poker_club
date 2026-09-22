@@ -3,7 +3,8 @@
  *
  * Displays game results in a web table format.
  * Winner (Place = 1) is highlighted with gold text color.
- * No sorting is applied - results are ordered by Place from backend.
+ * Results are sorted by Place ascending by default.
+ * Negative profit values are shown in red.
  *
  * Per agent_task_7_tables.md:
  * Columns: Place | Player | Total Invested | Chips End | Payout | Profit | ROI %
@@ -11,6 +12,8 @@
  * - Integer values for non-percentage fields
  * - 2 decimal places for percentage fields (ROI)
  * - Positive values without +, negative with -
+ * - Default sort: Place ascending
+ * - Negative profit values shown in red
  */
 
 import { Table, Text } from '@mantine/core'
@@ -45,6 +48,13 @@ function formatInt(value: number): string {
 }
 
 export function GameResultsTable({ results }: GameResultsTableProps) {
+  // Sort by Place ascending by default
+  const sortedResults = [...results].sort((a, b) => {
+    const aPlace = a.place ?? 0
+    const bPlace = b.place ?? 0
+    return aPlace - bPlace
+  })
+
   return (
     <Table variant="striped">
       <Table.Thead>
@@ -59,7 +69,7 @@ export function GameResultsTable({ results }: GameResultsTableProps) {
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {results.map((r) => (
+        {sortedResults.map((r) => (
           <Table.Tr key={r.playerId}>
             <Table.Td ta="center">
               {r.place === 1 ? (
@@ -79,7 +89,11 @@ export function GameResultsTable({ results }: GameResultsTableProps) {
               {r.payoutAmount !== undefined ? formatInt(r.payoutAmount) : '—'}
             </Table.Td>
             <Table.Td ta="center">
-              {r.place === 1 ? (
+              {r.profit < 0 ? (
+                <Text c="red" size="sm" fw={500}>
+                  {formatProfit(r.profit)}
+                </Text>
+              ) : r.place === 1 ? (
                 <Text c="yellow" size="sm" fw={500}>
                   {formatProfit(r.profit)}
                 </Text>
