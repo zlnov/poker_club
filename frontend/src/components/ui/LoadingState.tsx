@@ -9,6 +9,7 @@
 
 import { Center, Loader, Stack, Text, type LoaderProps } from '@mantine/core'
 import { forwardRef } from 'react'
+import { backgroundSurfaces } from '../../styles'
 
 export interface LoadingStateProps {
   /** Optional message to display below the loader. */
@@ -24,7 +25,11 @@ export interface LoadingStateProps {
 export const LoadingState = forwardRef<HTMLDivElement, LoadingStateProps>(
   ({ message, size = 'md' }, ref) => {
     return (
-      <Center ref={ref} style={{ minHeight: '200px' }} bg="transparent">
+      <Center
+        ref={ref}
+        style={{ minHeight: '200px' }}
+        bg={backgroundSurfaces.pageContainer}
+      >
         <Stack align="center" gap="sm">
           <Loader size={size} />
           {message && (

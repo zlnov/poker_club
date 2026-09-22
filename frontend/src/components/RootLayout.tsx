@@ -6,6 +6,7 @@
  * - Telegram environment detection
  * - Theme application (Telegram theme or default)
  * - Safe area handling for Telegram Mini App
+ * - Background video layer (persistent across navigation)
  *
  * See 04_FE_SPEC.md section 6 (Telegram Integration Layer) and
  * section 7 (Telegram and Standard Web compatibility).
@@ -25,9 +26,10 @@ import {
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useTelegramEnvironment } from '../hooks'
-import { applyTelegramThemeVariables } from '../styles'
+import { applyTelegramThemeVariables, backgroundSurfaces } from '../styles'
 import { Navigation } from './Navigation'
 import { ThemeToggle } from './ThemeToggle'
+import { BackgroundVideo } from './BackgroundVideo'
 import { useTelegramAuth } from '../auth/useTelegramAuth'
 
 /**
@@ -36,6 +38,7 @@ import { useTelegramAuth } from '../auth/useTelegramAuth'
  * Wraps all child routes with the application shell.
  * Handles Telegram environment initialization and theme application.
  * Telegram authentication is handled by useTelegramAuth hook.
+ * BackgroundVideo is always rendered and persists across navigation.
  */
 export function RootLayout() {
   const telegramEnv = useTelegramEnvironment()
@@ -59,52 +62,63 @@ export function RootLayout() {
   }, [telegramEnv])
 
   return (
-    <AppShell
-      header={{ height: 64 }}
-      navbar={{
-        width: 260,
-        breakpoint: 'sm',
-        collapsed: { mobile: true },
-      }}
-      padding={0}
-    >
-      <AppShellHeader>
-        <Group h="100%" px="md" justify="space-between" align="center">
-          <Group gap="sm">
-            <Burger
-              opened={drawerOpened}
-              onClick={openDrawer}
-              size="sm"
-              hiddenFrom="sm"
-              aria-label="Open navigation"
-            />
-            <Title order={3} fw={600}>
-              Poker Club
-            </Title>
-          </Group>
-          <ThemeToggle />
-        </Group>
-      </AppShellHeader>
+    <>
+      {/* Background video - persistent across all navigation, never unmounts */}
+      <BackgroundVideo />
 
-      <AppShellNavbar>
-        <Navigation />
-      </AppShellNavbar>
+      {/* App shell wrapper - ensures all UI is above background video */}
+      <div style={{ position: 'relative', zIndex: 1, height: '100vh' }}>
+        <AppShell
+          header={{ height: 64 }}
+          navbar={{
+            width: 260,
+            breakpoint: 'sm',
+            collapsed: { mobile: true },
+          }}
+          padding={0}
+        >
+          <AppShellHeader bg={backgroundSurfaces.header}>
+            <Group h="100%" px="md" justify="space-between" align="center">
+              <Group gap="sm">
+                <Burger
+                  opened={drawerOpened}
+                  onClick={openDrawer}
+                  size="sm"
+                  hiddenFrom="sm"
+                  aria-label="Open navigation"
+                />
+                <Title order={3} fw={600}>
+                  Poker Club
+                </Title>
+              </Group>
+              <ThemeToggle />
+            </Group>
+          </AppShellHeader>
 
-      <AppShellMain>
-        <Outlet />
-      </AppShellMain>
+          <AppShellNavbar bg={backgroundSurfaces.navbar}>
+            <Navigation />
+          </AppShellNavbar>
 
-      <Drawer
-        opened={drawerOpened}
-        onClose={closeDrawer}
-        title="Navigation"
-        size={260}
-        padding="md"
-        zIndex={1000}
-        hiddenFrom="sm"
-      >
-        <Navigation onNavigate={closeDrawer} />
-      </Drawer>
-    </AppShell>
+          <AppShellMain bg={backgroundSurfaces.main}>
+            <Outlet />
+          </AppShellMain>
+
+          <Drawer
+            opened={drawerOpened}
+            onClose={closeDrawer}
+            title="Navigation"
+            styles={{
+              content: { backgroundColor: backgroundSurfaces.drawer },
+            }}
+            size={260}
+            padding="md"
+            zIndex={1000}
+            hiddenFrom="sm"
+          >
+            <Navigation onNavigate={closeDrawer} />
+          </Drawer>
+        </AppShell>
+      </div>
+    </>
   )
 }

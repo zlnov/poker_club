@@ -113,6 +113,33 @@ export const pokerClubColors = {
 >
 
 /**
+ * Centralized background surface colors with opacity.
+ *
+ * All background surfaces use the same base color (46, 46, 46) with
+ * different opacity levels to allow the background video/poster to show through.
+ *
+ * Usage:
+ * - Import from this file and use directly in components
+ * - Or reference via theme.custom?.backgroundSurfaces
+ */
+export const backgroundSurfaces = {
+  /** Header background — 60% opacity */
+  header: 'rgba(46, 46, 46, 0.6)',
+  /** Navbar background — 30% opacity */
+  navbar: 'rgba(46, 46, 46, 0.3)',
+  /** Main content area background — 10% opacity */
+  main: 'rgba(46, 46, 46, 0.1)',
+  /** Drawer background — 80% opacity */
+  drawer: 'rgba(46, 46, 46, 0.8)',
+  /** PageContainer background — 50% opacity */
+  pageContainer: 'rgba(46, 46, 46, 0.5)',
+  /** Card background — 60% opacity */
+  card: 'rgba(46, 46, 46, 0.6)',
+  /** Paper background — 60% opacity */
+  paper: 'rgba(46, 46, 46, 0.6)',
+} as const
+
+/**
  * Mantine theme override for the Poker Club Frontend.
  *
  * Configures:
@@ -194,12 +221,14 @@ export const pokerClubTheme: MantineThemeOverride = {
       defaultProps: {
         radius: 'md',
         withBorder: true,
+        bg: backgroundSurfaces.card,
       },
     },
     Paper: {
       defaultProps: {
         radius: 'md',
         withBorder: true,
+        bg: backgroundSurfaces.paper,
       },
     },
     Input: {

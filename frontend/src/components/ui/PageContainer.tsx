@@ -10,6 +10,7 @@
 
 import { Container, type ContainerProps } from '@mantine/core'
 import { forwardRef } from 'react'
+import { backgroundSurfaces } from '../../styles'
 
 export interface PageContainerProps extends ContainerProps {}
 
@@ -25,7 +26,13 @@ export interface PageContainerProps extends ContainerProps {}
 export const PageContainer = forwardRef<HTMLDivElement, PageContainerProps>(
   ({ children, size = 'lg', py = 'lg', ...rest }, ref) => {
     return (
-      <Container ref={ref} size={size} py={py} {...rest}>
+      <Container
+        ref={ref}
+        size={size}
+        py={py}
+        bg={backgroundSurfaces.pageContainer}
+        {...rest}
+      >
         {children}
       </Container>
     )

@@ -18,6 +18,7 @@ import {
 } from '@mantine/core'
 import { IconInfoCircle } from '@tabler/icons-react'
 import { forwardRef } from 'react'
+import { backgroundSurfaces } from '../../styles'
 
 export interface EmptyStateProps {
   /** Title for the empty state. */
@@ -54,7 +55,11 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(
     ref,
   ) => {
     return (
-      <Center ref={ref} style={{ minHeight: '200px' }} bg="transparent">
+      <Center
+        ref={ref}
+        style={{ minHeight: '200px' }}
+        bg={backgroundSurfaces.pageContainer}
+      >
         <Stack align="center" gap="md" style={{ maxWidth: '400px' }}>
           {icon ?? <IconInfoCircle size={48} stroke={1.5} />}
           <Title order={4}>{title}</Title>

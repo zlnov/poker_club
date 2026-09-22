@@ -17,6 +17,7 @@ import {
 } from '@mantine/core'
 import { IconAlertCircle } from '@tabler/icons-react'
 import { forwardRef } from 'react'
+import { backgroundSurfaces } from '../../styles'
 
 export interface ErrorStateProps {
   /** Error message to display. */
@@ -50,7 +51,11 @@ export const ErrorState = forwardRef<HTMLDivElement, ErrorStateProps>(
     ref,
   ) => {
     return (
-      <Center ref={ref} style={{ minHeight: '200px' }} bg="transparent">
+      <Center
+        ref={ref}
+        style={{ minHeight: '200px' }}
+        bg={backgroundSurfaces.pageContainer}
+      >
         <Stack align="center" gap="md" style={{ maxWidth: '400px' }}>
           {icon ?? <IconAlertCircle size={48} stroke={1.5} />}
           <Title order={4}>Error</Title>

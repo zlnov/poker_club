@@ -8,6 +8,8 @@
  * section 34 (accessibility), section 890–902 (browser compatibility).
  */
 
+export { backgroundSurfaces } from './theme'
+
 /** Responsive breakpoints based on 05_FE_UX.md section 431–451. */
 export const breakpoints = {
   /** Mobile (primary priority, 05_FE_UX.md section 436). */
