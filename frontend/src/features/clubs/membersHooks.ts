@@ -54,6 +54,7 @@ function mapClubMember(member: BackendClubMember): ClubMemberRole {
     canAdjustResults: member.role === 'owner' || member.role === 'admin',
     canInvite: member.role === 'owner' || member.role === 'admin',
     canRemove: member.role === 'owner' || member.role === 'admin',
+    createdAt: member.created_at,
   }
 }
 

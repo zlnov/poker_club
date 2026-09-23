@@ -426,6 +426,8 @@ export interface ClubMemberRole {
   canInvite: boolean
   /** Can remove members. */
   canRemove: boolean
+  /** When the membership was created. */
+  createdAt: string
 }
 
 /** Invitation information for a club. */

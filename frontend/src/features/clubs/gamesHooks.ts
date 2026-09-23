@@ -649,6 +649,48 @@ export function useGameEvents(gameId: number) {
 }
 
 /**
+ * Fetch correction events for all games in a club.
+ * Fetches events for each game and filters for 'correction' type.
+ * Returns the latest correction events sorted by created_at descending.
+ */
+export function useClubCorrectionEvents(clubId: number) {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: [...eventKeys.all, 'club', clubId, 'corrections'],
+    queryFn: async () => {
+      // First get all games for the club
+      const gamesResponse = await apiClient.get<{ games: BackendGame[] }>(
+        `/clubs/${clubId}/games`,
+      )
+      const games = gamesResponse.data.games
+
+      // Fetch events for each game and filter for corrections
+      const allCorrections: BackendGameEvent[] = []
+      for (const game of games) {
+        try {
+          const eventsResponse = await apiClient.get<{
+            events: BackendGameEvent[]
+          }>(`/games/${game.id}/events`)
+          const corrections = eventsResponse.data.events.filter(
+            (e) => e.type === 'correction',
+          )
+          allCorrections.push(...corrections)
+        } catch {
+          // Skip games where events can't be fetched
+        }
+      }
+
+      // Sort by created_at descending (newest first)
+      return allCorrections.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+    },
+    enabled: !!clubId,
+  })
+}
+
+/**
  * Fetch game results for a finished game.
  * Uses GET /games/{gameId}/results.
  */

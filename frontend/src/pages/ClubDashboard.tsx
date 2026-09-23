@@ -1,20 +1,18 @@
 /**
  * Club dashboard page component.
  *
- * Displays the club dashboard — an overview of the club with statistics
- * and quick actions.
+ * Displays the club dashboard with the PULSE section showing:
+ * - Active Game card
+ * - Upcoming Game card
  *
  * See 05_FE_UX.md section 4 (Application Navigation) and
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Button, Card, Group, Text, Title, SimpleGrid } from '@mantine/core'
+import { Button, Card, Group, Title } from '@mantine/core'
 import {
-  IconUsers,
   IconChessKing,
-  IconCash,
-  IconTrophy,
-  IconClock,
+  IconUsers,
   IconEdit,
   IconChartBar,
 } from '@tabler/icons-react'
@@ -26,22 +24,30 @@ import {
   LoadingState,
   ErrorState,
 } from '../components/ui'
-import { useClub, useClubStatistics } from '../features'
-import { formatCurrency } from '../utils'
+import { useClub, useClubGames } from '../features'
+import { useAuth } from '../auth'
 import { ApiClientError } from '../api'
+import { PulseSection } from '../components/PulseSection'
+import { TopListSection } from '../components/TopListSection'
+import { ModerationSection } from '../components/ModerationSection'
+import { EventJournalSection } from '../components/EventJournalSection'
+import { backgroundSurfaces } from '../styles'
 
 /**
  * Club dashboard page.
  *
  * Displays:
- * - Club information (name, role)
- * - Club statistics (members, games, bank, etc.)
- * - Quick action buttons
+ * - PULSE section (Active Game + Upcoming Game cards)
+ * - TOP LIST section (Top 3 by Profit + Top 3 by ROI)
+ * - MODERATION section (Admin/Owner only)
+ * - EVENT JOURNAL section (Admin/Owner only)
  */
 export function ClubDashboard() {
   const { clubId } = useParams<{ clubId: string }>()
   const navigate = useNavigate()
   const clubIdNum = clubId ? parseInt(clubId, 10) : 0
+  const { user } = useAuth()
+  const currentPlayerId = user?.id ?? 0
 
   const {
     data: club,
@@ -52,14 +58,26 @@ export function ClubDashboard() {
   } = useClub(clubIdNum)
 
   const {
-    data: stats,
-    isLoading: statsLoading,
-    isError: statsError,
-    refetch: refetchStats,
-  } = useClubStatistics(clubIdNum)
+    data: games,
+    isLoading: gamesLoading,
+    isError: gamesError,
+    refetch: refetchGames,
+  } = useClubGames(clubIdNum)
 
-  const isLoading = clubLoading || statsLoading
-  const isError = clubError || statsError
+  const isLoading = clubLoading || gamesLoading
+  const isError = clubError || gamesError
+
+  // Find active game
+  const activeGame = games?.find((g) => g.status === 'active') ?? null
+
+  // Find upcoming planned game (earliest start time)
+  const upcomingGame =
+    games
+      ?.filter((g) => g.status === 'planned')
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+      )[0] ?? null
 
   if (isLoading) {
     return (
@@ -82,7 +100,7 @@ export function ClubDashboard() {
           }
           onRetry={() => {
             refetchClub()
-            refetchStats()
+            refetchGames()
           }}
         />
       </PageContainer>
@@ -128,113 +146,30 @@ export function ClubDashboard() {
         }
       />
 
-      {/* Club Statistics */}
-      {stats && (
-        <Card mt="lg" padding="lg" radius="md" withBorder>
-          <Title order={4} mb="md">
-            Club Statistics
-          </Title>
-          <SimpleGrid cols={4} spacing="md">
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconUsers size={20} />
-                <Text size="sm" c="dimmed">
-                  Members
-                </Text>
-              </Group>
-              <Text size="2xl" fw={700}>
-                {stats.totalMembers}
-              </Text>
-            </Card>
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconChessKing size={20} />
-                <Text size="sm" c="dimmed">
-                  Total Games
-                </Text>
-              </Group>
-              <Text size="2xl" fw={700}>
-                {stats.totalGames}
-              </Text>
-            </Card>
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconCash size={20} />
-                <Text size="sm" c="dimmed">
-                  Cash Games
-                </Text>
-              </Group>
-              <Text size="2xl" fw={700}>
-                {stats.cashGames}
-              </Text>
-            </Card>
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconTrophy size={20} />
-                <Text size="sm" c="dimmed">
-                  Tournaments
-                </Text>
-              </Group>
-              <Text size="2xl" fw={700}>
-                {stats.tournamentGames}
-              </Text>
-            </Card>
-          </SimpleGrid>
+      {/* PULSE Section */}
+      <PulseSection
+        activeGame={activeGame}
+        upcomingGame={upcomingGame}
+        currentPlayerId={currentPlayerId}
+      />
 
-          <SimpleGrid cols={3} spacing="md" mt="md">
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconCash size={20} />
-                <Text size="sm" c="dimmed">
-                  Total Buy-in
-                </Text>
-              </Group>
-              <Text size="lg" fw={600}>
-                {formatCurrency(stats.totalBuyInAmount, 'USD')}
-              </Text>
-            </Card>
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconCash size={20} />
-                <Text size="sm" c="dimmed">
-                  Total Rebuy
-                </Text>
-              </Group>
-              <Text size="lg" fw={600}>
-                {formatCurrency(stats.totalRebuyAmount, 'USD')}
-              </Text>
-            </Card>
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconChartBar size={20} />
-                <Text size="sm" c="dimmed">
-                  Total Bank
-                </Text>
-              </Group>
-              <Text size="lg" fw={600}>
-                {formatCurrency(stats.totalBank, 'USD')}
-              </Text>
-            </Card>
-          </SimpleGrid>
+      {/* TOP LIST Section */}
+      <TopListSection clubId={club.id} />
 
-          <SimpleGrid cols={1} spacing="md" mt="md">
-            <Card shadow="sm" padding="md" radius="md" withBorder>
-              <Group gap="xs" mb="xs">
-                <IconClock size={20} />
-                <Text size="sm" c="dimmed">
-                  Avg Game Duration
-                </Text>
-              </Group>
-              <Text size="lg" fw={600}>
-                {stats.averageGameDuration}
-              </Text>
-            </Card>
-          </SimpleGrid>
-        </Card>
-      )}
+      {/* MODERATION Section (Admin/Owner only) */}
+      {(isOwner || isAdmin) && <ModerationSection clubId={club.id} />}
+
+      {/* EVENT JOURNAL Section (Admin/Owner only) */}
+      {(isOwner || isAdmin) && <EventJournalSection clubId={club.id} />}
 
       {/* Quick Actions */}
-      <Card mt="lg" padding="lg" radius="md" withBorder>
+      <Card
+        mt="lg"
+        padding="lg"
+        radius="md"
+        withBorder
+        bg={backgroundSurfaces.card}
+      >
         <Title order={4} mb="md">
           Quick Actions
         </Title>
