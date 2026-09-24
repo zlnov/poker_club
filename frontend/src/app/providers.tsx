@@ -42,7 +42,7 @@ export function AppProviders({ children }: AppProvidersProps) {
     <QueryClientProvider client={queryClient}>
       <MantineProvider
         theme={pokerClubTheme}
-        // ColorScheme switcher - temporarily disabled, Dark mode is default 
+        // ColorScheme switcher - temporarily disabled, Dark mode is default
         // defaultColorScheme="light"
         defaultColorScheme="dark"
         withCssVariables

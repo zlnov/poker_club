@@ -104,46 +104,51 @@ function TopProfitCard({
         </Stack>
       ) : (
         <Table
-          variant="unstyled"
-          style={{ flex: 1, tableLayout: 'fixed' }}
+          variant="compact"
+          style={{ flex: 1 }}
           mt="auto"
+          styles={{
+            td: { padding: '0.1rem' },
+            th: {
+              fontSize: 'var(--mantine-font-size-xs)',
+              color: 'var(--mantine-color-dimmed)',
+            },
+          }}
         >
-          <thead>
-            <tr>
-              <th style={{ width: '40px', textAlign: 'center' }}>#</th>
-              <th style={{ textAlign: 'left' }}>Игрок</th>
-              <th style={{ width: '80px', textAlign: 'center' }}>Игр</th>
-              <th style={{ width: '140px', textAlign: 'right' }}>
-                Total Profit
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th ta="center">#</Table.Th>
+              <Table.Th>Игрок</Table.Th>
+              <Table.Th ta="center">Игр</Table.Th>
+              <Table.Th ta="center">Total Profit</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {topPlayers.map((member, index) => (
-              <tr key={member.playerId}>
-                <td style={{ textAlign: 'center' }}>
-                  <Text size="sm" fw={700} c={getMedalColor(index)}>
+              <Table.Tr key={member.playerId}>
+                <Table.Td ta="center">
+                  <Text size="xs" fw={700} c={getMedalColor(index)}>
                     {index + 1}
                   </Text>
-                </td>
-                <td>
-                  <Text size="sm">@{formatPlayerName(member.playerName)}</Text>
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <Text size="sm">{member.games}</Text>
-                </td>
-                <td style={{ textAlign: 'right' }}>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs">@{formatPlayerName(member.playerName)}</Text>
+                </Table.Td>
+                <Table.Td ta="center">
+                  <Text size="xs">{member.games}</Text>
+                </Table.Td>
+                <Table.Td ta="center">
                   <Text
-                    size="sm"
+                    size="xs"
                     fw={600}
                     c={member.profit >= 0 ? 'green' : 'red'}
                   >
                     {formatProfit(member.profit)}
                   </Text>
-                </td>
-              </tr>
+                </Table.Td>
+              </Table.Tr>
             ))}
-          </tbody>
+          </Table.Tbody>
         </Table>
       )}
     </Card>
@@ -190,44 +195,51 @@ function TopRoiCard({
         </Stack>
       ) : (
         <Table
-          variant="unstyled"
-          style={{ flex: 1, tableLayout: 'fixed' }}
+          variant="compact"
+          style={{ flex: 1 }}
           mt="auto"
+          styles={{
+            td: { padding: '0.1rem' },
+            th: {
+              fontSize: 'var(--mantine-font-size-xs)',
+              color: 'var(--mantine-color-dimmed)',
+            },
+          }}
         >
-          <thead>
-            <tr>
-              <th style={{ width: '40px', textAlign: 'center' }}>#</th>
-              <th style={{ textAlign: 'left' }}>Игрок</th>
-              <th style={{ width: '80px', textAlign: 'center' }}>Игр</th>
-              <th style={{ width: '140px', textAlign: 'right' }}>ROI %</th>
-            </tr>
-          </thead>
-          <tbody>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th ta="center">#</Table.Th>
+              <Table.Th>Игрок</Table.Th>
+              <Table.Th ta="center">Игр</Table.Th>
+              <Table.Th ta="center">ROI %</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
             {topPlayers.map((member, index) => (
-              <tr key={member.playerId}>
-                <td style={{ textAlign: 'center' }}>
-                  <Text size="sm" fw={700} c={getMedalColor(index)}>
+              <Table.Tr key={member.playerId}>
+                <Table.Td ta="center">
+                  <Text size="xs" fw={700} c={getMedalColor(index)}>
                     {index + 1}
                   </Text>
-                </td>
-                <td>
-                  <Text size="sm">@{formatPlayerName(member.playerName)}</Text>
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <Text size="sm">{member.games}</Text>
-                </td>
-                <td style={{ textAlign: 'right' }}>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs">@{formatPlayerName(member.playerName)}</Text>
+                </Table.Td>
+                <Table.Td ta="center">
+                  <Text size="xs">{member.games}</Text>
+                </Table.Td>
+                <Table.Td ta="center">
                   <Text
-                    size="sm"
+                    size="xs"
                     fw={600}
                     c={member.roi >= 0 ? 'green' : 'red'}
                   >
                     {formatRoi(member.roi)}
                   </Text>
-                </td>
-              </tr>
+                </Table.Td>
+              </Table.Tr>
             ))}
-          </tbody>
+          </Table.Tbody>
         </Table>
       )}
     </Card>

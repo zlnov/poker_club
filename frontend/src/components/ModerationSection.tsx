@@ -317,29 +317,34 @@ function GameParticipationRequestsCard({
       ) : (
         <>
           <Table
-            variant="unstyled"
-            style={{ flex: 1, tableLayout: 'fixed' }}
+            variant="compact"
+            style={{ flex: 1 }}
             mt="auto"
+            styles={{
+              td: { padding: '0.1rem' },
+              th: {
+                fontSize: 'var(--mantine-font-size-xs)',
+                color: 'var(--mantine-color-dimmed)',
+              },
+            }}
           >
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left' }}>Игрок</th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Игра</th>
-                <th style={{ width: '120px', textAlign: 'center' }}>
-                  Дата игры
-                </th>
-                <th style={{ width: '140px', textAlign: 'left' }}>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Игрок</Table.Th>
+                <Table.Th ta="center">Игра</Table.Th>
+                <Table.Th ta="center">Дата игры</Table.Th>
+                <Table.Th>Статус</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
               {displayRequests.map((req, index) => (
-                <tr key={`${req.gameId}-${index}`}>
-                  <td>
-                    <Text size="sm">@{req.playerName}</Text>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
+                <Table.Tr key={`${req.gameId}-${index}`}>
+                  <Table.Td>
+                    <Text size="xs">@{req.playerName}</Text>
+                  </Table.Td>
+                  <Table.Td ta="center">
                     <Text
-                      size="sm"
+                      size="xs"
                       component="a"
                       href={`/games/${req.gameId}`}
                       style={{
@@ -353,23 +358,23 @@ function GameParticipationRequestsCard({
                     >
                       #{req.gameId}
                     </Text>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <Text size="sm">{formatDateDDMMYYYY(req.gameDate)}</Text>
-                  </td>
-                  <td>
+                  </Table.Td>
+                  <Table.Td ta="center">
+                    <Text size="xs">{formatDateDDMMYYYY(req.gameDate)}</Text>
+                  </Table.Td>
+                  <Table.Td>
                     <Group gap="xs">
-                      <Text c="orange" size="sm">
+                      <Text c="orange" size="xs">
                         ●
                       </Text>
-                      <Text size="sm" c="orange">
+                      <Text size="xs" c="orange">
                         Ожидает
                       </Text>
                     </Group>
-                  </td>
-                </tr>
+                  </Table.Td>
+                </Table.Tr>
               ))}
-            </tbody>
+            </Table.Tbody>
           </Table>
 
           {hasMore && (
