@@ -16,10 +16,8 @@ import {
   NavLink as MantineNavLink,
   ScrollArea,
   Stack,
-  useMantineColorScheme,
-  Group,
-  Text,
-  useMantineTheme,
+  // ColorScheme switcher - temporarily disabled, Dark mode is default
+  // useMantineColorScheme,
 } from '@mantine/core'
 import {
   IconHome,
@@ -30,7 +28,8 @@ import {
   IconClubs,
 } from '@tabler/icons-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { ThemeToggle } from './ThemeToggle'
+// ColorScheme switcher - temporarily disabled, Dark mode is default
+// import { ThemeToggle } from './ThemeToggle'
 
 /** Navigation item definition. */
 interface NavItem {
@@ -68,8 +67,9 @@ const topNavItems: NavItem[] = [
 export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
   const params = useParams()
-  const { colorScheme } = useMantineColorScheme()
-  const theme = useMantineTheme()
+  // ColorScheme switcher - temporarily disabled, Dark mode is default
+  // const { colorScheme } = useMantineColorScheme()
+  // const theme = useMantineTheme()
 
   const clubId = params.clubId
   const showClubNav = !!clubId
@@ -112,7 +112,9 @@ export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
           <>{topNavItems.map((item) => renderNavItem(item))}</>
         )}
 
+        {/* ColorScheme switcher - temporarily disabled, Dark mode is default */}
         {/* Theme toggle at the bottom */}
+        {/*
         <Stack
           gap="xs"
           pt="lg"
@@ -128,6 +130,7 @@ export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
             </Text>
           </Group>
         </Stack>
+        */}
       </Stack>
     </ScrollArea>
   )

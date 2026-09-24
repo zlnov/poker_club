@@ -28,7 +28,8 @@ import { useDisclosure } from '@mantine/hooks'
 import { useTelegramEnvironment } from '../hooks'
 import { applyTelegramThemeVariables, backgroundSurfaces } from '../styles'
 import { Navigation } from './Navigation'
-import { ThemeToggle } from './ThemeToggle'
+// ColorScheme switcher - temporarily disabled, Dark mode is default
+// import { ThemeToggle } from './ThemeToggle'
 import { BackgroundVideo } from './BackgroundVideo'
 import { useTelegramAuth } from '../auth/useTelegramAuth'
 
@@ -91,7 +92,8 @@ export function RootLayout() {
                   Poker Club
                 </Title>
               </Group>
-              <ThemeToggle />
+              {/* ColorScheme switcher - temporarily disabled, Dark mode is default */}
+              {/* <ThemeToggle /> */}
             </Group>
           </AppShellHeader>
 

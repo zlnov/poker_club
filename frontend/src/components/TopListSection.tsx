@@ -91,9 +91,7 @@ function TopProfitCard({
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <Title order={5} mb="sm">
-        <Text size="s">
-          ТОП-3 ПО ПРИБЫЛИ
-        </Text>
+        <Text size="s">ТОП-3 ПО ПРИБЫЛИ</Text>
       </Title>
 
       {topPlayers.length === 0 ? (
@@ -176,9 +174,7 @@ function TopRoiCard({
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <Title order={5} mb="xs">
-        <Text size="s">
-          ТОП-3 ПО ROI
-        </Text>
+        <Text size="s">ТОП-3 ПО ROI</Text>
       </Title>
       <Text size="xs" c="dimmed" mb="sm">
         (минимум 5 игр)

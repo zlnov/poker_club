@@ -131,9 +131,7 @@ function PendingConfirmationsCard({
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <Title order={5} mb="sm">
-        <Text size="x">
-          ОЖИДАЮТ ПОДТВЕРЖДЕНИЯ
-        </Text>
+        <Text size="x">ОЖИДАЮТ ПОДТВЕРЖДЕНИЯ</Text>
       </Title>
 
       {counters.length === 0 ? (
@@ -192,9 +190,7 @@ function ActiveGameCard({
         style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       >
         <Title order={5} mb="sm">
-          <Text size="x">
-            ИГРА ТРЕБУЕТ ЗАВЕРШЕНИЯ
-          </Text>
+          <Text size="x">ИГРА ТРЕБУЕТ ЗАВЕРШЕНИЯ</Text>
         </Title>
         <Stack
           style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
@@ -307,9 +303,7 @@ function GameParticipationRequestsCard({
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <Title order={5} mb="sm">
-        <Text size="x">
-          ЗАЯВКИ НА УЧАСТИЕ В ИГРАХ
-        </Text>  
+        <Text size="x">ЗАЯВКИ НА УЧАСТИЕ В ИГРАХ</Text>
       </Title>
 
       {displayRequests.length === 0 ? (
@@ -426,9 +420,7 @@ function ClubMembershipRequestsCard({
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <Title order={5} mb="sm">
-        <Text size="x">
-          ЗАЯВКИ НА ВСТУПЛЕНИЕ В КЛУБ
-        </Text>
+        <Text size="x">ЗАЯВКИ НА ВСТУПЛЕНИЕ В КЛУБ</Text>
       </Title>
 
       {displayRequests.length === 0 ? (
