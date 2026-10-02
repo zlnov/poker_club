@@ -2094,18 +2094,11 @@ func (s *Service) FinishGame(ctx context.Context, tgUserID int64, clubID int64, 
 		return errors.New("завершение tournament игр не реализовано")
 	}
 
-	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
-	if err != nil {
-		return fmt.Errorf("failed to get game participants: %w", err)
-	}
-
 	// Only confirmed participants are actual game participants.
 	// invited/accepted/declined participants are excluded from results.
-	confirmedParticipants := make([]*domain.GameParticipant, 0, len(participants))
-	for _, p := range participants {
-		if p.Status == "confirmed" {
-			confirmedParticipants = append(confirmedParticipants, p)
-		}
+	confirmedParticipants, err := s.repos.GameParticipants.GetConfirmedByGame(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("failed to get confirmed game participants: %w", err)
 	}
 
 	// Constraint 7.9: all confirmed players' results must be entered.
@@ -2225,10 +2218,12 @@ func (s *Service) recalculateGameResults(ctx context.Context, game *domain.Game,
 	})
 
 	// Assign places. Players with equal profit and ROI get the same place.
-	place := 0
 	for i, r := range results {
+		var place int
 		if i == 0 || r.profit != results[i-1].profit || r.roi != results[i-1].roi {
 			place = i + 1
+		} else {
+			place = *results[i-1].participant.Place
 		}
 		r.participant.PayoutAmount = &r.payoutAmount
 		r.participant.Place = &place
@@ -2327,13 +2322,14 @@ func (s *Service) AdjustGameResults(ctx context.Context, tgUserID int64, clubID 
 		s.log.Warn("failed to create correction event", "error", err)
 	}
 
-	// Reload participants (chips_end was just updated) and recalculate all results.
-	participants, err := s.repos.GameParticipants.GetByGame(ctx, gameID)
+	// Reload confirmed participants (chips_end was just updated) and recalculate all results.
+	// Only confirmed participants are actual game participants.
+	confirmedParticipants, err := s.repos.GameParticipants.GetConfirmedByGame(ctx, gameID)
 	if err != nil {
-		return fmt.Errorf("failed to get game participants: %w", err)
+		return fmt.Errorf("failed to get confirmed game participants: %w", err)
 	}
 
-	if err := s.recalculateGameResults(ctx, game, participants); err != nil {
+	if err := s.recalculateGameResults(ctx, game, confirmedParticipants); err != nil {
 		return fmt.Errorf("failed to recalculate game results: %w", err)
 	}
 
@@ -2406,7 +2402,8 @@ func (s *Service) RecalculatePlayerStatistics(ctx context.Context, clubID int64)
 	aggs := make(map[int64]*playerAgg)
 
 	for _, game := range games {
-		participants, err := s.repos.GameParticipants.GetByGame(ctx, game.ID)
+		// Only confirmed participants are actual game participants.
+		participants, err := s.repos.GameParticipants.GetConfirmedByGame(ctx, game.ID)
 		if err != nil {
 			s.log.Warn("failed to get participants for game during recalculation",
 				"error", err, "game_id", game.ID)
@@ -2600,7 +2597,8 @@ func (s *Service) GetClubStatistics(ctx context.Context, tgUserID int64, clubID 
 			totalDuration += game.EndTime.Sub(game.StartTime)
 		}
 
-		participants, err := s.repos.GameParticipants.GetByGame(ctx, game.ID)
+		// Only confirmed participants contribute to club statistics.
+		participants, err := s.repos.GameParticipants.GetConfirmedByGame(ctx, game.ID)
 		if err != nil {
 			s.log.Warn("failed to get participants for game during club stats",
 				"error", err, "game_id", game.ID)
@@ -2662,7 +2660,15 @@ func (s *Service) GetFinishedGameResults(ctx context.Context, tgUserID int64, cl
 		return nil, nil, fmt.Errorf("failed to get game participants: %w", err)
 	}
 
-	return game, participants, nil
+	// Only confirmed participants are actual game participants.
+	confirmedParticipants := make([]*domain.GameParticipantWithPlayer, 0, len(participants))
+	for _, p := range participants {
+		if p.Status == "confirmed" {
+			confirmedParticipants = append(confirmedParticipants, p)
+		}
+	}
+
+	return game, confirmedParticipants, nil
 }
 
 // GetGameResultsWithCalculations returns a finished game and all its participants
@@ -2823,6 +2829,11 @@ func (s *Service) GetPlayerGameHistory(ctx context.Context, tgUserID int64, club
 
 		for _, p := range participants {
 			if p.PlayerID != playerID {
+				continue
+			}
+
+			// Only include confirmed participants in game history.
+			if p.Status != "confirmed" {
 				continue
 			}
 

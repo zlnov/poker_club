@@ -77,6 +77,7 @@ import {
   useRegisterRebuy,
   useSetCurrentStack,
   useGameResults,
+  useAdjustGameResults,
 } from '../features'
 import { useClub, useClubMembers } from '../features'
 import { useAuth } from '../auth'
@@ -84,6 +85,7 @@ import { ApiClientError } from '../api'
 import type { GameBankCheck } from '../types'
 import { notifications } from '@mantine/notifications'
 import type { GameStatus, GameType, ClubMemberRole, GameConfig } from '../types'
+import { formatPercentage } from '../utils'
 import { GameResultsTable } from '../components/statistics/GameResultsTable'
 import { GameResultsMobile } from '../components/statistics/GameResultsMobile'
 import { GameConfigurationCards } from '../components/GameConfigurationCards'
@@ -227,7 +229,11 @@ export function GamePage() {
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [changeBankerOpen, setChangeBankerOpen] = useState(false)
   const [adjustGameOpen, setAdjustGameOpen] = useState(false)
+  const [adjustResultsOpen, setAdjustResultsOpen] = useState(false)
   const [selectedBankerId, setSelectedBankerId] = useState<number | null>(null)
+  const [chipsEndEdits, setChipsEndEdits] = useState<
+    Record<number, number | undefined>
+  >({})
 
   const { data: game, isLoading, isError, error, refetch } = useGame(gameIdNum)
 
@@ -261,6 +267,7 @@ export function GamePage() {
 
   // Phase 7: Game Results hook (for finished games)
   const { data: gameResultsData } = useGameResults(gameIdNum)
+  const adjustGameResults = useAdjustGameResults()
 
   const isMobile = useMediaQuery('(max-width: 768px)')
 
@@ -487,6 +494,61 @@ export function GamePage() {
     }
   }
 
+  const handleChipsEndChange = (
+    playerId: number,
+    chipsEnd: number | undefined,
+  ) => {
+    setChipsEndEdits((prev) => ({ ...prev, [playerId]: chipsEnd }))
+  }
+
+  const handleSaveResults = async () => {
+    const results = gameResultsData?.results || []
+    const changedPlayers = results.filter((r) => {
+      const edited = chipsEndEdits[r.playerId]
+      return edited !== undefined && edited !== r.chipsEnd
+    })
+
+    if (changedPlayers.length === 0) {
+      notifications.show({
+        title: 'No changes',
+        message: 'No chips_end values have been changed.',
+        color: 'blue',
+      })
+      return
+    }
+
+    try {
+      for (const r of changedPlayers) {
+        await adjustGameResults.mutateAsync({
+          gameId: gameIdNum,
+          playerId: r.playerId,
+          chipsEnd: chipsEndEdits[r.playerId]!,
+        })
+      }
+      notifications.show({
+        title: 'Results Updated',
+        message: 'Chips end values have been adjusted successfully.',
+        color: 'green',
+      })
+      setAdjustResultsOpen(false)
+      setChipsEndEdits({})
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        notifications.show({
+          title: 'Failed to adjust results',
+          message: err.message,
+          color: 'red',
+        })
+      } else {
+        notifications.show({
+          title: 'Failed to adjust results',
+          message: 'An unexpected error occurred.',
+          color: 'red',
+        })
+      }
+    }
+  }
+
   // Compute bank check for finish game validation
   function computeBankCheck(): GameBankCheck {
     if (!game) {
@@ -698,9 +760,19 @@ export function GamePage() {
       {/* Game Results (finished games only) */}
       {game.status === 'finished' && gameResultsData && (
         <Card mt="lg" padding="lg" radius="md" withBorder>
-          <Title order={4} mb="md">
-            Results
-          </Title>
+          <Group justify="space-between" mb="md">
+            <Title order={4} mb={0}>
+              Results
+            </Title>
+            {game.gameType === 'cash' && canManageGame && (
+              <Button
+                leftSection={<IconEdit size={16} />}
+                onClick={() => setAdjustResultsOpen(true)}
+              >
+                Adjust Results
+              </Button>
+            )}
+          </Group>
 
           {/* Results Table */}
           {!isMobile ? (
@@ -1561,6 +1633,83 @@ export function GamePage() {
               loading={registerRebuy.isPending}
             >
               Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Adjust Results Modal (finished Cash games, owner/admin only) */}
+      <Modal
+        opened={adjustResultsOpen}
+        onClose={() => setAdjustResultsOpen(false)}
+        title="Adjust Results"
+        centered
+        size="lg"
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Adjust chips_end values for confirmed participants. Other fields
+            (place, profit, ROI) are recalculated by the server.
+          </Text>
+          <Table variant="striped">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Player</Table.Th>
+                <Table.Th ta="center">Chips End</Table.Th>
+                <Table.Th ta="center">Place</Table.Th>
+                <Table.Th ta="center">Profit</Table.Th>
+                <Table.Th ta="center">ROI</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {(gameResultsData?.results || []).map((r) => (
+                <Table.Tr key={r.playerId}>
+                  <Table.Td>{r.playerName}</Table.Td>
+                  <Table.Td ta="center">
+                    <NumberInput
+                      value={
+                        r.chipsEnd !== undefined ? r.chipsEnd : ''
+                      }
+                      onChange={(value) => {
+                        const numValue =
+                          value === '' ? undefined : Number(value)
+                        handleChipsEndChange(r.playerId, numValue)
+                      }}
+                      allowNegative={false}
+                      min={0}
+                      size="sm"
+                      w="100%"
+                    />
+                  </Table.Td>
+                  <Table.Td ta="center">{r.place ?? '—'}</Table.Td>
+                  <Table.Td ta="center">
+                    {r.profit !== undefined
+                      ? Math.round(r.profit)
+                      : '—'}
+                  </Table.Td>
+                  <Table.Td ta="center">
+                    {r.roi !== undefined
+                      ? formatPercentage(r.roi)
+                      : '—'}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="subtle"
+              onClick={() => setAdjustResultsOpen(false)}
+              disabled={adjustGameResults.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="green"
+              onClick={handleSaveResults}
+              loading={adjustGameResults.isPending}
+            >
+              Save
             </Button>
           </Group>
         </Stack>

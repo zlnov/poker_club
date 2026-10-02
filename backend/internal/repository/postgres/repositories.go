@@ -722,6 +722,33 @@ func (r *gameParticipantRepository) GetByGame(ctx context.Context, gameID int64)
 	}
 	return participants, nil
 }
+func (r *gameParticipantRepository) GetConfirmedByGame(ctx context.Context, gameID int64) ([]*domain.GameParticipant, error) {
+	query := `
+		SELECT id, game_id, player_id, buy_in_count, rebuy_count,
+			chips_end, payout_amount, place, status, created_at, updated_at
+		FROM game_participants WHERE game_id = $1
+			AND status = 'confirmed'
+		ORDER BY id ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get confirmed game participants: %w", err)
+	}
+	defer rows.Close()
+
+	var participants []*domain.GameParticipant
+	for rows.Next() {
+		var p domain.GameParticipant
+		if err := rows.Scan(
+			&p.ID, &p.GameID, &p.PlayerID, &p.BuyInCount, &p.RebuyCount,
+			&p.ChipsEnd, &p.PayoutAmount, &p.Place, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan game participant: %w", err)
+		}
+		participants = append(participants, &p)
+	}
+	return participants, nil
+}
 
 func (r *gameParticipantRepository) GetByGameWithPlayers(ctx context.Context, gameID int64) ([]*domain.GameParticipantWithPlayer, error) {
 	query := `

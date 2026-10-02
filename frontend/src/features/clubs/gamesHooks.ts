@@ -924,6 +924,7 @@ export function useAdjustGameResults() {
     onSuccess: ({ gameId }) => {
       queryClient.invalidateQueries({ queryKey: participantKeys.list(gameId) })
       queryClient.invalidateQueries({ queryKey: monitorKeys.detail(gameId) })
+      queryClient.invalidateQueries({ queryKey: resultKeys.detail(gameId) })
     },
   })
 }

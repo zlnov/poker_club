@@ -63,6 +63,7 @@ type GameParticipantRepository interface {
 	Create(ctx context.Context, participant *GameParticipant) (int64, error)
 	GetByID(ctx context.Context, id int64) (*GameParticipant, error)
 	GetByGame(ctx context.Context, gameID int64) ([]*GameParticipant, error)
+	GetConfirmedByGame(ctx context.Context, gameID int64) ([]*GameParticipant, error)
 	GetByGameWithPlayers(ctx context.Context, gameID int64) ([]*GameParticipantWithPlayer, error)
 	GetByGameAndPlayer(ctx context.Context, gameID, playerID int64) (*GameParticipant, error)
 	Update(ctx context.Context, participant *GameParticipant) error
