@@ -509,8 +509,8 @@ func (b *Bot) handleGameParticipants(ctx context.Context, cb *tgbotapi.CallbackQ
 		if p.Player.LastName != "" {
 			name += " " + p.Player.LastName
 		}
-		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
-			name += " (@" + p.Player.Nickname + ")"
+		if p.Player.TgUserNameOrEmpty() != "" {
+			name += " (@" + p.Player.TgUserNameOrEmpty() + ")"
 		}
 		sb.WriteString(fmt.Sprintf("%d. %s — %s\n", i+1, name, participantStatusLabel(p.Status)))
 	}
@@ -576,8 +576,8 @@ func (b *Bot) handleGameParticipantAction(ctx context.Context, cb *tgbotapi.Call
 	if target.Player.LastName != "" {
 		name += " " + target.Player.LastName
 	}
-	if target.Player.Nickname != "" && target.Player.Nickname != target.Player.FirstName {
-		name += " (@" + target.Player.Nickname + ")"
+	if target.Player.TgUserNameOrEmpty() != "" {
+		name += " (@" + target.Player.TgUserNameOrEmpty() + ")"
 	}
 
 	text := fmt.Sprintf("👤 %s\nСтатус: %s", name, participantStatusLabel(target.Status))

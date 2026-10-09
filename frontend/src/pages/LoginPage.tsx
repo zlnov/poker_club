@@ -1,15 +1,9 @@
 /**
- * Login page component.
- *
- * Handles Standard Web authentication with login + password.
- * Uses Mantine Form for validation.
- *
- * See 05_FE_UX.md section 10 (Forms) and
- * 07_AUTH.md section 4 (Standard Web Authentication).
+ * Login page — email/password + Continue with Telegram (Web OIDC).
  */
 
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
   Button,
   Stack,
@@ -20,42 +14,42 @@ import {
   Group,
   Center,
   Paper,
+  Divider,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
-import { IconInfoCircle, IconLock, IconUser } from '@tabler/icons-react'
+import { IconBrandTelegram, IconInfoCircle, IconLock, IconMail } from '@tabler/icons-react'
 import { useAuth } from '../auth'
+import { requestTelegramIdToken } from '../auth/telegramWebLogin'
 import { useTelegramEnvironment } from '../hooks'
 import { ApiClientError } from '../api'
+import { useApiClient } from '../hooks'
+import { getEnvironment } from '../env'
 
 interface LoginFormValues {
-  login: string
+  email: string
   password: string
 }
 
-/**
- * Login page.
- *
- * Displays login form for Standard Web authentication.
- * In Telegram Mini App mode, shows a message to use Telegram authentication.
- */
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, isLoading: authLoading } = useAuth()
+  const { login, loginWithTelegramWeb, isLoading: authLoading } = useAuth()
+  const apiClient = useApiClient()
   const telegramEnv = useTelegramEnvironment()
   const [error, setError] = useState<string | null>(null)
+  const [telegramLoading, setTelegramLoading] = useState(false)
 
-  // Get redirect target from location state or default to /clubs
   const from = (location.state as { from?: string })?.from || '/clubs'
+  const env = getEnvironment()
 
   const form = useForm<LoginFormValues>({
     initialValues: {
-      login: '',
+      email: '',
       password: '',
     },
     validate: {
-      login: (value) =>
-        value.length < 3 ? 'Login must be at least 3 characters' : null,
+      email: (value) =>
+        /^\S+@\S+\.\S+$/.test(value) ? null : 'Enter a valid email',
       password: (value) =>
         value.length < 12 ? 'Password must be at least 12 characters' : null,
     },
@@ -70,10 +64,7 @@ export function LoginPage() {
       if (err instanceof ApiClientError) {
         switch (err.code) {
           case 'INVALID_CREDENTIALS':
-            setError('Invalid login or password')
-            break
-          case 'RATE_LIMIT_EXCEEDED':
-            setError('Too many login attempts. Please try again later.')
+            setError('Invalid email or password')
             break
           default:
             setError(err.message || 'Login failed. Please try again.')
@@ -86,7 +77,55 @@ export function LoginPage() {
     }
   })
 
-  // In Telegram Mini App mode, show a different UI
+  const handleTelegramContinue = async () => {
+    setError(null)
+    if (!env.telegramLoginClientId) {
+      setError('Telegram Login is not configured (VITE_TELEGRAM_LOGIN_CLIENT_ID).')
+      return
+    }
+
+    setTelegramLoading(true)
+    try {
+      const challenge = await apiClient.post<{
+        challenge_token: string
+        nonce: string
+      }>('/auth/telegram/web/challenge', { skipAuth: true })
+
+      if (!challenge.data.nonce || !challenge.data.challenge_token) {
+        throw new Error('Invalid Telegram login challenge from server')
+      }
+
+      const idToken = await requestTelegramIdToken(
+        env.telegramLoginClientId,
+        challenge.data.nonce,
+      )
+      const result = await loginWithTelegramWeb(
+        idToken,
+        challenge.data.challenge_token,
+      )
+
+      if (result.registrationRequired && result.registrationToken) {
+        navigate('/register', {
+          replace: true,
+          state: { registrationToken: result.registrationToken, from },
+        })
+        return
+      }
+
+      navigate(from, { replace: true })
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        setError(err.message || 'Telegram login failed')
+      } else if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError('Telegram login failed')
+      }
+    } finally {
+      setTelegramLoading(false)
+    }
+  }
+
   if (telegramEnv.isTelegram) {
     return (
       <Center style={{ minHeight: '100vh' }}>
@@ -104,26 +143,15 @@ export function LoginPage() {
             <Text c="dimmed" ta="center">
               Telegram Mini App Mode
             </Text>
-
-            <Stack gap="md" align="center">
-              <Text ta="center" size="lg" fw={500}>
-                Authentication via Telegram
-              </Text>
-              <Text ta="center" c="dimmed" size="sm">
-                You are running in Telegram Mini App mode. Authentication is
-                handled automatically via Telegram.
-              </Text>
-              <Alert
-                color="blue"
-                variant="filled"
-                title="Auto-authentication"
-                icon={<IconInfoCircle size={16} />}
-              >
-                The app will automatically authenticate you using your Telegram
-                account. If authentication doesn't happen automatically, please
-                restart the Mini App.
-              </Alert>
-            </Stack>
+            <Alert
+              color="blue"
+              variant="filled"
+              title="Auto-authentication"
+              icon={<IconInfoCircle size={16} />}
+            >
+              Authentication is handled automatically via Telegram Mini App
+              initData.
+            </Alert>
           </Stack>
         </Paper>
       </Center>
@@ -147,27 +175,40 @@ export function LoginPage() {
             Sign in to your account
           </Text>
 
+          {error && (
+            <Alert
+              color="red"
+              variant="filled"
+              title="Login Failed"
+              icon={<IconInfoCircle size={16} />}
+              w="100%"
+            >
+              {error}
+            </Alert>
+          )}
+
+          <Button
+            fullWidth
+            size="lg"
+            variant="light"
+            leftSection={<IconBrandTelegram size={18} />}
+            loading={telegramLoading}
+            onClick={handleTelegramContinue}
+          >
+            Continue with Telegram
+          </Button>
+
+          <Divider label="or" labelPosition="center" w="100%" />
+
           <form onSubmit={handleSubmit} style={{ width: '100%' }}>
             <Stack gap="md">
-              {error && (
-                <Alert
-                  color="red"
-                  variant="filled"
-                  title="Login Failed"
-                  icon={<IconInfoCircle size={16} />}
-                >
-                  {error}
-                </Alert>
-              )}
-
               <TextInput
-                {...form.getInputProps('login')}
-                label="Login"
-                placeholder="Enter your login"
-                autoComplete="username"
+                {...form.getInputProps('email')}
+                label="Email"
+                placeholder="you@example.com"
+                autoComplete="email"
                 required
-                error={form.errors.login}
-                leftSection={<IconUser size={16} />}
+                leftSection={<IconMail size={16} />}
               />
 
               <TextInput
@@ -177,7 +218,6 @@ export function LoginPage() {
                 placeholder="Enter your password"
                 autoComplete="current-password"
                 required
-                error={form.errors.password}
                 leftSection={<IconLock size={16} />}
               />
 
@@ -194,10 +234,16 @@ export function LoginPage() {
 
           <Group justify="center" gap="xs">
             <Text c="dimmed" size="sm">
-              Running in Telegram?
+              New here?
             </Text>
-            <Text size="sm" c="blue" fw={500}>
-              Open the Mini App for automatic authentication
+            <Text
+              component={Link}
+              to="/register"
+              size="sm"
+              c="blue"
+              fw={500}
+            >
+              Create an account with Telegram
             </Text>
           </Group>
         </Stack>

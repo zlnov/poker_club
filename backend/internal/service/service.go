@@ -89,24 +89,53 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 }
 
 // RegisterTelegramUser finds or creates a player from Telegram user data.
-// If the player already exists (matched by tg_user_id), it is returned.
-// Otherwise a new player is created with the provided Telegram data.
-func (s *Service) RegisterTelegramUser(ctx context.Context, tgUserID int64, firstName, lastName, nickname string) (*domain.Player, error) {
+// If the player already exists (matched by tg_user_id), it is returned and
+// tg_user_name is synchronized. Otherwise a new player is created with
+// Telegram identity fields only (no Poker Club nickname, no password).
+func (s *Service) RegisterTelegramUser(ctx context.Context, tgUserID int64, firstName, lastName, tgUserName string) (*domain.Player, error) {
+	var tgUserNamePtr *string
+	if tgUserName != "" {
+		tgUserNamePtr = &tgUserName
+	}
+
 	player, err := s.repos.Players.GetByTgUserID(ctx, tgUserID)
 	if err == nil {
 		_ = s.repos.Players.UpdateLastSeen(ctx, player.ID)
+		current := player.TgUserNameOrEmpty()
+		next := ""
+		if tgUserNamePtr != nil {
+			next = *tgUserNamePtr
+		}
+		if current != next {
+			if syncErr := s.repos.Players.UpdateTgUserName(ctx, player.ID, tgUserNamePtr); syncErr != nil {
+				s.log.Warn("failed to sync tg_user_name", "player_id", player.ID, "error", syncErr)
+			} else {
+				player.TgUserName = tgUserNamePtr
+			}
+		}
 		return player, nil
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("failed to lookup player by tg_user_id: %w", err)
 	}
 
 	player = &domain.Player{
-		FirstName: firstName,
-		LastName:  lastName,
-		Nickname:  nickname,
-		Password:  "",
-		TgUserID:  &tgUserID,
+		FirstName:  firstName,
+		LastName:   lastName,
+		Nickname:   nil,
+		TgUserName: tgUserNamePtr,
+		Password:   nil,
+		TgUserID:   &tgUserID,
 	}
 	playerID, err := s.repos.Players.Create(ctx, player)
 	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			existing, getErr := s.repos.Players.GetByTgUserID(ctx, tgUserID)
+			if getErr != nil {
+				return nil, fmt.Errorf("failed to get player after conflict: %w", getErr)
+			}
+			return existing, nil
+		}
 		return nil, fmt.Errorf("failed to create player: %w", err)
 	}
 	player.ID = playerID
@@ -300,9 +329,9 @@ func (s *Service) GetClubByTgChatID(ctx context.Context, tgChatID int64) (*domai
 	return s.repos.Clubs.GetByTgChatID(ctx, tgChatID)
 }
 
-// GetPlayerByUsername returns a player by their Telegram username (nickname).
+// GetPlayerByUsername returns a player by their Telegram username (tg_user_name).
 func (s *Service) GetPlayerByUsername(ctx context.Context, username string) (*domain.Player, error) {
-	return s.repos.Players.GetByNickname(ctx, username)
+	return s.repos.Players.GetByTgUserName(ctx, username)
 }
 
 // GetPlayerByTgUserID returns a player by their Telegram user ID.
@@ -2713,7 +2742,7 @@ func (s *Service) GetGameResultsWithCalculations(ctx context.Context, tgUserID i
 			chipsEnd = *p.ChipsEnd
 		}
 
-		playerName := p.Player.Nickname
+		playerName := p.Player.NicknameOrEmpty()
 		if playerName == "" {
 			playerName = p.Player.FirstName
 			if p.Player.LastName != "" {
@@ -2863,7 +2892,7 @@ func (s *Service) GetPlayerGameHistory(ctx context.Context, tgUserID int64, club
 				chipsEnd = *p.ChipsEnd
 			}
 
-			playerName := p.Player.Nickname
+			playerName := p.Player.NicknameOrEmpty()
 			if playerName == "" {
 				playerName = p.Player.FirstName
 				if p.Player.LastName != "" {

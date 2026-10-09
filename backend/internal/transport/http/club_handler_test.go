@@ -79,9 +79,24 @@ func (m *mockPlayerRepo) GetByTgUserID(ctx context.Context, tgUserID int64) (*do
 	return nil, errors.New("player not found")
 }
 func (m *mockPlayerRepo) GetByNickname(ctx context.Context, nickname string) (*domain.Player, error) {
-	return nil, nil
+	return nil, domain.ErrNotFound
+}
+func (m *mockPlayerRepo) GetByEmail(ctx context.Context, email string) (*domain.Player, error) {
+	return nil, domain.ErrNotFound
+}
+func (m *mockPlayerRepo) GetByTgUserName(ctx context.Context, tgUserName string) (*domain.Player, error) {
+	return nil, domain.ErrNotFound
 }
 func (m *mockPlayerRepo) UpdateLastSeen(ctx context.Context, id int64) error { return nil }
+func (m *mockPlayerRepo) UpdateTgUserName(ctx context.Context, id int64, tgUserName *string) error {
+	return nil
+}
+func (m *mockPlayerRepo) UpdateProfile(ctx context.Context, id int64, firstName, lastName string, nickname, email, phoneNumber *string) error {
+	return nil
+}
+func (m *mockPlayerRepo) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
+	return nil
+}
 
 type mockClubMemberRepo struct {
 	member    *domain.ClubMember
@@ -166,7 +181,7 @@ func TestGetClub_AdminRole(t *testing.T) {
 		TgUserID:  &tgUserID,
 		FirstName: "Test",
 		LastName:  "User",
-		Nickname:  "testuser",
+		Nickname: ptrString("testuser"),
 	}
 	club := &domain.Club{
 		ID:        1,
@@ -219,7 +234,7 @@ func TestGetClub_OwnerRole(t *testing.T) {
 		TgUserID:  &tgUserID,
 		FirstName: "Test",
 		LastName:  "User",
-		Nickname:  "testuser",
+		Nickname: ptrString("testuser"),
 	}
 	club := &domain.Club{
 		ID:        1,
@@ -275,7 +290,7 @@ func TestGetClub_MemberRole(t *testing.T) {
 		TgUserID:  &tgUserID,
 		FirstName: "Test",
 		LastName:  "User",
-		Nickname:  "testuser",
+		Nickname: ptrString("testuser"),
 	}
 	club := &domain.Club{
 		ID:        1,
@@ -313,7 +328,7 @@ func TestGetClub_TgUserIDNotEqualPlayerID(t *testing.T) {
 		TgUserID:  &tgUserID,
 		FirstName: "Test",
 		LastName:  "User",
-		Nickname:  "testuser",
+		Nickname: ptrString("testuser"),
 	}
 	club := &domain.Club{
 		ID:        1,
@@ -364,3 +379,5 @@ func TestGetClub_TgUserIDNotEqualPlayerID(t *testing.T) {
 
 // Ensure testLogger is available
 var _ = os.Stderr
+
+func ptrString(v string) *string { return &v }

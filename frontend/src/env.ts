@@ -18,6 +18,8 @@ export interface EnvironmentConfig {
   isDevelopment: boolean
   /** True when running in production mode. */
   isProduction: boolean
+  /** Telegram Login Client ID from @BotFather → Login Widget. Not a secret. */
+  telegramLoginClientId: string | null
 }
 
 /**
@@ -28,6 +30,9 @@ export function getEnvironment(): EnvironmentConfig {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
   const envName = (import.meta.env.VITE_ENV_NAME ??
     'development') as Environment
+  const telegramLoginClientId =
+    (import.meta.env.VITE_TELEGRAM_LOGIN_CLIENT_ID as string | undefined) ||
+    null
 
   if (!apiBaseUrl) {
     throw new Error(
@@ -43,5 +48,6 @@ export function getEnvironment(): EnvironmentConfig {
     envName,
     isDevelopment,
     isProduction,
+    telegramLoginClientId,
   }
 }

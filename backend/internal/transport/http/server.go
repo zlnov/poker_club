@@ -46,6 +46,9 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 	{
 		authRoutes.POST("/login", authHandler.Login)
 		authRoutes.POST("/telegram", authHandler.TelegramAuth)
+		authRoutes.POST("/telegram/web/challenge", authHandler.TelegramWebChallenge)
+		authRoutes.POST("/telegram/web", authHandler.TelegramWebAuth)
+		authRoutes.POST("/telegram/web/register", authHandler.TelegramWebRegister)
 		authRoutes.POST("/refresh", authHandler.Refresh)
 		authRoutes.POST("/logout", authHandler.Logout)
 	}
@@ -55,6 +58,8 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 	protected.Use(AuthMiddleware(jwt))
 	{
 		protected.GET("/me", authHandler.Me)
+		protected.PATCH("/me", authHandler.UpdateMe)
+		protected.POST("/me/password", authHandler.ChangePassword)
 
 		// Club management
 		clubHandler := NewClubHandler(svc)

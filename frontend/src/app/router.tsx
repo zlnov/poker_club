@@ -25,6 +25,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import {
   HomePage,
   LoginPage,
+  RegisterPage,
   ClubsPage,
   ClubDashboard,
   ClubGames,
@@ -79,6 +80,16 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: <LoginPage />,
+          },
+        ],
+      },
+      {
+        path: 'register',
+        element: <PublicRoute />,
+        children: [
+          {
+            index: true,
+            element: <RegisterPage />,
           },
         ],
       },

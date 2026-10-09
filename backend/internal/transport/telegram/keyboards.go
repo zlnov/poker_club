@@ -328,8 +328,8 @@ func memberLabel(m *domain.ClubMemberWithPlayer) string {
 	if m.Player.LastName != "" {
 		name += " " + m.Player.LastName
 	}
-	if m.Player.Nickname != "" && m.Player.Nickname != m.Player.FirstName {
-		name += " (@" + m.Player.Nickname + ")"
+	if m.Player.TgUserNameOrEmpty() != "" {
+		name += " (@" + m.Player.TgUserNameOrEmpty() + ")"
 	}
 	return fmt.Sprintf("%s [%s, %s]", name, roleLabel(m.Role), statusLabel(m.Status))
 }
@@ -551,8 +551,8 @@ func bankerSelectKeyboard(clubID int64, members []*domain.ClubMemberWithPlayer) 
 		if m.Player.LastName != "" {
 			label += " " + m.Player.LastName
 		}
-		if m.Player.Nickname != "" && m.Player.Nickname != m.Player.FirstName {
-			label += " (@" + m.Player.Nickname + ")"
+		if m.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + m.Player.TgUserNameOrEmpty() + ")"
 		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameSelectParam, id, "banker", m.ID)),
@@ -686,8 +686,8 @@ func gameParticipantListKeyboard(clubID, gameID int64, participants []*domain.Ga
 		if p.Player.LastName != "" {
 			label += " " + p.Player.LastName
 		}
-		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
-			label += " (@" + p.Player.Nickname + ")"
+		if p.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + p.Player.TgUserNameOrEmpty() + ")"
 		}
 		label += " [" + participantStatusLabel(p.Status) + "]"
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -943,8 +943,8 @@ func rebuyPlayerSelectKeyboard(clubID, gameID int64, participants []*domain.Game
 		if p.Player.LastName != "" {
 			label += " " + p.Player.LastName
 		}
-		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
-			label += " (@" + p.Player.Nickname + ")"
+		if p.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + p.Player.TgUserNameOrEmpty() + ")"
 		}
 		label += fmt.Sprintf(" [Rebuy: %d]", p.RebuyCount)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -984,8 +984,8 @@ func rebuyManagePlayerSelectKeyboard(clubID, gameID int64, participants []*domai
 		if p.Player.LastName != "" {
 			label += " " + p.Player.LastName
 		}
-		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
-			label += " (@" + p.Player.Nickname + ")"
+		if p.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + p.Player.TgUserNameOrEmpty() + ")"
 		}
 		label += fmt.Sprintf(" [Rebuy: %d]", p.RebuyCount)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -1046,8 +1046,8 @@ func addPlayerSelectKeyboard(clubID, gameID int64, members []*domain.ClubMemberW
 		if m.Player.LastName != "" {
 			label += " " + m.Player.LastName
 		}
-		if m.Player.Nickname != "" && m.Player.Nickname != m.Player.FirstName {
-			label += " (@" + m.Player.Nickname + ")"
+		if m.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + m.Player.TgUserNameOrEmpty() + ")"
 		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("%s:%s:%s:%d", cbGameAddPlayerConfirm, cid, gid, m.PlayerID)),
@@ -1242,8 +1242,8 @@ func gameEndPlayerSelectKeyboard(clubID, gameID int64, participants []*domain.Ga
 		if p.Player.LastName != "" {
 			label += " " + p.Player.LastName
 		}
-		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
-			label += " (@" + p.Player.Nickname + ")"
+		if p.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + p.Player.TgUserNameOrEmpty() + ")"
 		}
 		chipsStr := "—"
 		if p.ChipsEnd != nil {
@@ -1315,8 +1315,8 @@ func gameAdjustPlayerSelectKeyboard(clubID, gameID int64, participants []*domain
 		if p.Player.LastName != "" {
 			label += " " + p.Player.LastName
 		}
-		if p.Player.Nickname != "" && p.Player.Nickname != p.Player.FirstName {
-			label += " (@" + p.Player.Nickname + ")"
+		if p.Player.TgUserNameOrEmpty() != "" {
+			label += " (@" + p.Player.TgUserNameOrEmpty() + ")"
 		}
 		chipsStr := "—"
 		if p.ChipsEnd != nil {

@@ -104,12 +104,9 @@ func (b *Bot) handleNewChatMembers(ctx context.Context, update tgbotapi.Update) 
 
 		firstName := member.FirstName
 		lastName := member.LastName
-		nickname := member.UserName
-		if nickname == "" {
-			nickname = firstName
-		}
+		tgUserName := member.UserName
 
-		player, err := b.svc.RegisterTelegramUser(ctx, int64(member.ID), firstName, lastName, nickname)
+		player, err := b.svc.RegisterTelegramUser(ctx, int64(member.ID), firstName, lastName, tgUserName)
 		if err != nil {
 			b.log.Error("failed to register telegram user from new chat member",
 				"error", err, "tg_user_id", member.ID)

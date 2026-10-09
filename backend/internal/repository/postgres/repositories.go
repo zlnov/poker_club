@@ -7,9 +7,32 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"poker-club/backend/internal/domain"
 )
+
+const playerSelectColumns = `
+	id, first_name, last_name, nickname, tg_user_name, phone_number, email, password,
+	tg_user_id, last_seen, created_at, updated_at`
+
+func scanPlayer(scan func(dest ...any) error) (*domain.Player, error) {
+	var p domain.Player
+	err := scan(
+		&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.TgUserName,
+		&p.PhoneNumber, &p.Email, &p.Password, &p.TgUserID,
+		&p.LastSeen, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
 
 // clubRepository implements domain.ClubRepository.
 type clubRepository struct {
@@ -157,79 +180,54 @@ func (r *playerRepository) Ping(ctx context.Context) error {
 
 func (r *playerRepository) Create(ctx context.Context, player *domain.Player) (int64, error) {
 	query := `
-		INSERT INTO players (first_name, last_name, nickname, phone_number, email, password, tg_user_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO players (first_name, last_name, nickname, tg_user_name, phone_number, email, password, tg_user_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
 	`
 	var id int64
 	err := r.db.Pool.QueryRow(ctx, query,
-		player.FirstName, player.LastName, player.Nickname,
+		player.FirstName, player.LastName, player.Nickname, player.TgUserName,
 		player.PhoneNumber, player.Email, player.Password, player.TgUserID,
 	).Scan(&id)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return 0, fmt.Errorf("%w: %w", domain.ErrConflict, err)
+		}
 		return 0, fmt.Errorf("failed to create player: %w", err)
 	}
 	return id, nil
 }
 
-func (r *playerRepository) GetByTgUserID(ctx context.Context, tgUserID int64) (*domain.Player, error) {
-	query := `
-		SELECT id, first_name, last_name, nickname, phone_number, email, password, tg_user_id, last_seen, created_at, updated_at
-		FROM players WHERE tg_user_id = $1
-	`
-	var p domain.Player
-	err := r.db.Pool.QueryRow(ctx, query, tgUserID).Scan(
-		&p.ID, &p.FirstName, &p.LastName, &p.Nickname,
-		&p.PhoneNumber, &p.Email, &p.Password, &p.TgUserID,
-		&p.LastSeen, &p.CreatedAt, &p.UpdatedAt,
-	)
+func (r *playerRepository) getPlayerBy(ctx context.Context, where string, arg any) (*domain.Player, error) {
+	query := `SELECT ` + playerSelectColumns + ` FROM players WHERE ` + where
+	p, err := scanPlayer(r.db.Pool.QueryRow(ctx, query, arg).Scan)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("player not found: tg_user_id=%d", tgUserID)
+			return nil, fmt.Errorf("%w: %s", domain.ErrNotFound, where)
 		}
 		return nil, fmt.Errorf("failed to get player: %w", err)
 	}
-	return &p, nil
+	return p, nil
+}
+
+func (r *playerRepository) GetByTgUserID(ctx context.Context, tgUserID int64) (*domain.Player, error) {
+	return r.getPlayerBy(ctx, "tg_user_id = $1", tgUserID)
+}
+
+func (r *playerRepository) GetByEmail(ctx context.Context, email string) (*domain.Player, error) {
+	return r.getPlayerBy(ctx, "email = $1", email)
 }
 
 func (r *playerRepository) GetByNickname(ctx context.Context, nickname string) (*domain.Player, error) {
-	query := `
-		SELECT id, first_name, last_name, nickname, phone_number, email, password, tg_user_id, last_seen, created_at, updated_at
-		FROM players WHERE nickname = $1
-	`
-	var p domain.Player
-	err := r.db.Pool.QueryRow(ctx, query, nickname).Scan(
-		&p.ID, &p.FirstName, &p.LastName, &p.Nickname,
-		&p.PhoneNumber, &p.Email, &p.Password, &p.TgUserID,
-		&p.LastSeen, &p.CreatedAt, &p.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("player not found: nickname=%s", nickname)
-		}
-		return nil, fmt.Errorf("failed to get player: %w", err)
-	}
-	return &p, nil
+	return r.getPlayerBy(ctx, "nickname = $1", nickname)
+}
+
+func (r *playerRepository) GetByTgUserName(ctx context.Context, tgUserName string) (*domain.Player, error) {
+	return r.getPlayerBy(ctx, "tg_user_name = $1", tgUserName)
 }
 
 func (r *playerRepository) GetByID(ctx context.Context, id int64) (*domain.Player, error) {
-	query := `
-		SELECT id, first_name, last_name, nickname, phone_number, email, password, tg_user_id, last_seen, created_at, updated_at
-		FROM players WHERE id = $1
-	`
-	var p domain.Player
-	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
-		&p.ID, &p.FirstName, &p.LastName, &p.Nickname,
-		&p.PhoneNumber, &p.Email, &p.Password, &p.TgUserID,
-		&p.LastSeen, &p.CreatedAt, &p.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("player not found: id=%d", id)
-		}
-		return nil, fmt.Errorf("failed to get player: %w", err)
-	}
-	return &p, nil
+	return r.getPlayerBy(ctx, "id = $1", id)
 }
 
 func (r *playerRepository) UpdateLastSeen(ctx context.Context, id int64) error {
@@ -237,6 +235,49 @@ func (r *playerRepository) UpdateLastSeen(ctx context.Context, id int64) error {
 	_, err := r.db.Pool.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to update last_seen: %w", err)
+	}
+	return nil
+}
+
+func (r *playerRepository) UpdateTgUserName(ctx context.Context, id int64, tgUserName *string) error {
+	query := `UPDATE players SET tg_user_name = $1 WHERE id = $2`
+	tag, err := r.db.Pool.Exec(ctx, query, tgUserName, id)
+	if err != nil {
+		return fmt.Errorf("failed to update tg_user_name: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: id=%d", domain.ErrNotFound, id)
+	}
+	return nil
+}
+
+func (r *playerRepository) UpdateProfile(ctx context.Context, id int64, firstName, lastName string, nickname, email, phoneNumber *string) error {
+	query := `
+		UPDATE players
+		SET first_name = $1, last_name = $2, nickname = $3, email = $4, phone_number = $5
+		WHERE id = $6
+	`
+	tag, err := r.db.Pool.Exec(ctx, query, firstName, lastName, nickname, email, phoneNumber, id)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %w", domain.ErrConflict, err)
+		}
+		return fmt.Errorf("failed to update profile: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: id=%d", domain.ErrNotFound, id)
+	}
+	return nil
+}
+
+func (r *playerRepository) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
+	query := `UPDATE players SET password = $1 WHERE id = $2`
+	tag, err := r.db.Pool.Exec(ctx, query, passwordHash, id)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: id=%d", domain.ErrNotFound, id)
 	}
 	return nil
 }
@@ -288,7 +329,8 @@ func (r *clubMemberRepository) GetByClubAndPlayer(ctx context.Context, clubID, p
 func (r *clubMemberRepository) GetByClubWithPlayers(ctx context.Context, clubID int64) ([]*domain.ClubMemberWithPlayer, error) {
 	query := `
 		SELECT cm.id, cm.club_id, cm.player_id, cm.role, cm.status, cm.accepted, cm.created_at, cm.updated_at,
-		       p.id, p.first_name, p.last_name, p.nickname, p.phone_number, p.email, p.password, p.tg_user_id, p.last_seen, p.created_at, p.updated_at
+		       p.id, p.first_name, p.last_name, p.nickname, p.tg_user_name, p.phone_number, p.email, p.password,
+		       p.tg_user_id, p.last_seen, p.created_at, p.updated_at
 		FROM club_members cm
 		JOIN players p ON p.id = cm.player_id
 		WHERE cm.club_id = $1
@@ -306,7 +348,7 @@ func (r *clubMemberRepository) GetByClubWithPlayers(ctx context.Context, clubID 
 		if err := rows.Scan(
 			&cmp.ID, &cmp.ClubID, &cmp.PlayerID, &cmp.Role, &cmp.Status, &cmp.Accepted,
 			&cmp.CreatedAt, &cmp.UpdatedAt,
-			&cmp.Player.ID, &cmp.Player.FirstName, &cmp.Player.LastName, &cmp.Player.Nickname,
+			&cmp.Player.ID, &cmp.Player.FirstName, &cmp.Player.LastName, &cmp.Player.Nickname, &cmp.Player.TgUserName,
 			&cmp.Player.PhoneNumber, &cmp.Player.Email, &cmp.Player.Password, &cmp.Player.TgUserID,
 			&cmp.Player.LastSeen, &cmp.Player.CreatedAt, &cmp.Player.UpdatedAt,
 		); err != nil {
@@ -754,7 +796,7 @@ func (r *gameParticipantRepository) GetByGameWithPlayers(ctx context.Context, ga
 	query := `
 		SELECT gp.id, gp.game_id, gp.player_id, gp.buy_in_count, gp.rebuy_count,
 		       gp.chips_end, gp.payout_amount, gp.place, gp.status, gp.created_at, gp.updated_at,
-		       p.id, p.first_name, p.last_name, p.nickname, p.phone_number, p.email, p.password,
+		       p.id, p.first_name, p.last_name, p.nickname, p.tg_user_name, p.phone_number, p.email, p.password,
 		       p.tg_user_id, p.last_seen, p.created_at, p.updated_at
 		FROM game_participants gp
 		JOIN players p ON p.id = gp.player_id
@@ -773,7 +815,7 @@ func (r *gameParticipantRepository) GetByGameWithPlayers(ctx context.Context, ga
 		if err := rows.Scan(
 			&gp.ID, &gp.GameID, &gp.PlayerID, &gp.BuyInCount, &gp.RebuyCount,
 			&gp.ChipsEnd, &gp.PayoutAmount, &gp.Place, &gp.Status, &gp.CreatedAt, &gp.UpdatedAt,
-			&gp.Player.ID, &gp.Player.FirstName, &gp.Player.LastName, &gp.Player.Nickname,
+			&gp.Player.ID, &gp.Player.FirstName, &gp.Player.LastName, &gp.Player.Nickname, &gp.Player.TgUserName,
 			&gp.Player.PhoneNumber, &gp.Player.Email, &gp.Player.Password,
 			&gp.Player.TgUserID, &gp.Player.LastSeen, &gp.Player.CreatedAt, &gp.Player.UpdatedAt,
 		); err != nil {

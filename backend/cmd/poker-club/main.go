@@ -59,7 +59,26 @@ func run() error {
 		70*time.Hour,   // access token lifetime per 07.1_AUTH_SECURITY.md
 		15*24*time.Hour, // refresh token lifetime: 15 days per 07.1_AUTH_SECURITY.md
 	)
-	authUC := auth.NewAuthUseCase(repos, jwtManager, cfg.BotToken, log)
+
+	var oidcValidator *auth.TelegramOIDCValidator
+	var challengeMgr *auth.ChallengeManager
+	if cfg.TelegramLoginClientID != "" {
+		oidcValidator = auth.NewTelegramOIDCValidator(
+			cfg.TelegramLoginClientID,
+			cfg.TelegramLoginIssuer,
+			cfg.TelegramLoginJWKSURL,
+		)
+		challengeMgr = auth.NewChallengeManager(
+			cfg.JWTSecret,
+			cfg.TelegramLoginNonceTTL,
+			cfg.RegistrationTokenTTL,
+		)
+		log.Info("telegram web login (OIDC) configured")
+	} else {
+		log.Warn("TELEGRAM_LOGIN_CLIENT_ID not set; web telegram login disabled")
+	}
+
+	authUC := auth.NewAuthUseCase(repos, jwtManager, cfg.BotToken, log, oidcValidator, challengeMgr)
 
 	// Create HTTP server
 	httpServer := transporthttp.NewServer(cfg, svc, jwtManager, authUC)
