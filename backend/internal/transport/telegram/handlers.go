@@ -69,12 +69,9 @@ func (b *Bot) handleStart(ctx context.Context, msg *tgbotapi.Message) {
 
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
-	nickname := msg.From.UserName
-	if nickname == "" {
-		nickname = firstName
-	}
+	tgUserName := msg.From.UserName
 
-	_, err := b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	_, err := b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, tgUserName)
 	if err != nil {
 		b.log.Error("failed to register player on /start", "error", err)
 		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
@@ -133,11 +130,8 @@ func (b *Bot) handleStartWithClub(ctx context.Context, msg *tgbotapi.Message, ar
 	// Register the user (if new) — needed to resolve role.
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
-	nickname := msg.From.UserName
-	if nickname == "" {
-		nickname = firstName
-	}
-	_, err = b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	tgUserName := msg.From.UserName
+	_, err = b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, tgUserName)
 	if err != nil {
 		b.log.Error("failed to register player on /start club deep link", "error", err)
 		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
@@ -162,11 +156,8 @@ func (b *Bot) handleStartWithStats(ctx context.Context, msg *tgbotapi.Message, a
 	// Register the user (if new) — needed to resolve player ID for stats.
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
-	nickname := msg.From.UserName
-	if nickname == "" {
-		nickname = firstName
-	}
-	_, err = b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	tgUserName := msg.From.UserName
+	_, err = b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, tgUserName)
 	if err != nil {
 		b.log.Error("failed to register player on /start stats deep link", "error", err)
 		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
@@ -207,11 +198,8 @@ func (b *Bot) handleMenu(ctx context.Context, msg *tgbotapi.Message) {
 	// In private chat: register user (if new) and show role-appropriate menu.
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
-	nickname := msg.From.UserName
-	if nickname == "" {
-		nickname = firstName
-	}
-	_, err := b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, nickname)
+	tgUserName := msg.From.UserName
+	_, err := b.svc.RegisterTelegramUser(ctx, msg.From.ID, firstName, lastName, tgUserName)
 	if err != nil {
 		b.log.Error("failed to register player on /menu", "error", err)
 		b.sendText(msg.Chat.ID, "Ошибка при регистрации. Попробуйте позже.")
@@ -662,12 +650,9 @@ func (b *Bot) handleCreateClub(ctx context.Context, msg *tgbotapi.Message) {
 
 	firstName := msg.From.FirstName
 	lastName := msg.From.LastName
-	nickname := msg.From.UserName
-	if nickname == "" {
-		nickname = firstName
-	}
+	tgUserName := msg.From.UserName
 
-	club, err := b.svc.CreateClub(ctx, msg.From.ID, firstName, lastName, nickname, clubName)
+	club, err := b.svc.CreateClub(ctx, msg.From.ID, firstName, lastName, tgUserName, clubName)
 	if err != nil {
 		b.log.Error("failed to create club", "error", err)
 		b.sendText(msg.Chat.ID, fmt.Sprintf("Ошибка при создании клуба: %v", err))
@@ -936,8 +921,8 @@ func (b *Bot) showClubMembers(ctx context.Context, chatID int64, msgID int, club
 		if m.Player.LastName != "" {
 			name += " " + m.Player.LastName
 		}
-		if m.Player.Nickname != "" {
-			name += " (@" + m.Player.Nickname + ")"
+		if m.Player.TgUserNameOrEmpty() != "" {
+			name += " (@" + m.Player.TgUserNameOrEmpty() + ")"
 		}
 		sb.WriteString(fmt.Sprintf("%d. %s — %s, %s", i+1, name, roleLabel(m.Role), statusLabel(m.Status)))
 		if m.Status == "pending" {
@@ -1007,8 +992,8 @@ func (b *Bot) handleMemberAction(ctx context.Context, cb *tgbotapi.CallbackQuery
 	if targetMember.Player.LastName != "" {
 		name += " " + targetMember.Player.LastName
 	}
-	if targetMember.Player.Nickname != "" {
-		name += " (@" + targetMember.Player.Nickname + ")"
+	if targetMember.Player.TgUserNameOrEmpty() != "" {
+		name += " (@" + targetMember.Player.TgUserNameOrEmpty() + ")"
 	}
 
 	text := fmt.Sprintf(

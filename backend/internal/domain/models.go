@@ -16,14 +16,36 @@ type Player struct {
 	ID          int64
 	FirstName   string
 	LastName    string
-	Nickname    string
+	Nickname    *string // Poker Club nickname; nil until set by the user
+	TgUserName  *string // Telegram username without @; may be nil
 	PhoneNumber *string
 	Email       *string
-	Password    string
+	Password    *string // bcrypt hash; nil when no password is set
 	TgUserID    *int64
 	LastSeen    time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+// HasPassword reports whether the player has a password hash set.
+func (p *Player) HasPassword() bool {
+	return p != nil && p.Password != nil && *p.Password != ""
+}
+
+// NicknameOrEmpty returns the Poker Club nickname or "" if unset.
+func (p *Player) NicknameOrEmpty() string {
+	if p == nil || p.Nickname == nil {
+		return ""
+	}
+	return *p.Nickname
+}
+
+// TgUserNameOrEmpty returns the Telegram username or "" if unset.
+func (p *Player) TgUserNameOrEmpty() string {
+	if p == nil || p.TgUserName == nil {
+		return ""
+	}
+	return *p.TgUserName
 }
 
 // ClubMember represents a player's membership in a club.

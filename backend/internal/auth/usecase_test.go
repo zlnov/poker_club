@@ -33,6 +33,7 @@ type mockPlayerRepo struct {
 	createErr  error
 	created    *domain.Player
 	lastSeenID int64
+	updatedTg  *string
 }
 
 func (m *mockPlayerRepo) Ping(ctx context.Context) error { return nil }
@@ -46,25 +47,61 @@ func (m *mockPlayerRepo) GetByID(ctx context.Context, id int64) (*domain.Player,
 	if m.player != nil && m.player.ID == id {
 		return m.player, nil
 	}
-	return nil, errors.New("player not found")
+	return nil, domain.ErrNotFound
 }
 
 func (m *mockPlayerRepo) GetByTgUserID(ctx context.Context, tgUserID int64) (*domain.Player, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 	if m.player != nil && m.player.TgUserID != nil && *m.player.TgUserID == tgUserID {
 		return m.player, nil
 	}
-	return nil, m.getErr
+	return nil, domain.ErrNotFound
+}
+
+func (m *mockPlayerRepo) GetByEmail(ctx context.Context, email string) (*domain.Player, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if m.player != nil && m.player.Email != nil && *m.player.Email == email {
+		return m.player, nil
+	}
+	return nil, domain.ErrNotFound
 }
 
 func (m *mockPlayerRepo) GetByNickname(ctx context.Context, nickname string) (*domain.Player, error) {
-	if m.player != nil && m.player.Nickname == nickname {
+	if m.player != nil && m.player.Nickname != nil && *m.player.Nickname == nickname {
 		return m.player, nil
 	}
-	return nil, m.getErr
+	return nil, domain.ErrNotFound
+}
+
+func (m *mockPlayerRepo) GetByTgUserName(ctx context.Context, tgUserName string) (*domain.Player, error) {
+	if m.player != nil && m.player.TgUserName != nil && *m.player.TgUserName == tgUserName {
+		return m.player, nil
+	}
+	return nil, domain.ErrNotFound
 }
 
 func (m *mockPlayerRepo) UpdateLastSeen(ctx context.Context, id int64) error {
 	m.lastSeenID = id
+	return nil
+}
+
+func (m *mockPlayerRepo) UpdateTgUserName(ctx context.Context, id int64, tgUserName *string) error {
+	m.updatedTg = tgUserName
+	if m.player != nil && m.player.ID == id {
+		m.player.TgUserName = tgUserName
+	}
+	return nil
+}
+
+func (m *mockPlayerRepo) UpdateProfile(ctx context.Context, id int64, firstName, lastName string, nickname, email, phoneNumber *string) error {
+	return nil
+}
+
+func (m *mockPlayerRepo) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
 	return nil
 }
 
@@ -144,14 +181,14 @@ func (m *mockClubMemberRepo) UpdateAccepted(ctx context.Context, clubID, playerI
 func TestLogin_InvalidCredentials_PlayerNotFound(t *testing.T) {
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
-			getErr: errors.New("player not found"),
+			getErr: domain.ErrNotFound,
 		},
 		ClubMembers: &mockClubMemberRepo{},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
-	_, err := uc.Login(context.Background(), "nonexistent", "password")
+	_, err := uc.Login(context.Background(), "nobody@example.com", "password")
 	if err != ErrInvalidCredentials {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -159,20 +196,44 @@ func TestLogin_InvalidCredentials_PlayerNotFound(t *testing.T) {
 
 func TestLogin_InvalidCredentials_WrongPassword(t *testing.T) {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.DefaultCost)
+	pw := string(hashedPassword)
+	email := "test@example.com"
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
 			player: &domain.Player{
 				ID:       1,
-				Nickname: "testuser",
-				Password: string(hashedPassword),
+				Email:    &email,
+				Nickname: ptrString("testuser"),
+				Password: &pw,
 			},
 		},
 		ClubMembers: &mockClubMemberRepo{},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
-	_, err := uc.Login(context.Background(), "testuser", "wrongpassword")
+	_, err := uc.Login(context.Background(), email, "wrongpassword")
+	if err != ErrInvalidCredentials {
+		t.Errorf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLogin_InvalidCredentials_NullPassword(t *testing.T) {
+	email := "telegram-only@example.com"
+	repos := &domain.Repositories{
+		Players: &mockPlayerRepo{
+			player: &domain.Player{
+				ID:       1,
+				Email:    &email,
+				Password: nil,
+			},
+		},
+		ClubMembers: &mockClubMemberRepo{},
+	}
+	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
+
+	_, err := uc.Login(context.Background(), email, "anypassword12")
 	if err != ErrInvalidCredentials {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -180,21 +241,24 @@ func TestLogin_InvalidCredentials_WrongPassword(t *testing.T) {
 
 func TestLogin_Success(t *testing.T) {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.DefaultCost)
+	pw := string(hashedPassword)
+	email := "test@example.com"
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
 			player: &domain.Player{
 				ID:       1,
-				Nickname: "testuser",
-				Password: string(hashedPassword),
+				Email:    &email,
+				Nickname: ptrString("testuser"),
+				Password: &pw,
 			},
 		},
-		ClubMembers: &mockClubMemberRepo{},
+		ClubMembers:   &mockClubMemberRepo{},
 		RefreshTokens: &mockRefreshTokenRepo{},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
-	tokens, err := uc.Login(context.Background(), "testuser", "correctpassword")
+	tokens, err := uc.Login(context.Background(), email, "correctpassword")
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
@@ -413,14 +477,14 @@ func TestValidateTelegramInitData_Valid(t *testing.T) {
 func TestAuthenticateTelegram_NewPlayer(t *testing.T) {
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
-			getErr:  errors.New("player not found"),
+			getErr:  domain.ErrNotFound,
 			createID: 1,
 		},
 		ClubMembers:    &mockClubMemberRepo{},
 		RefreshTokens:  &mockRefreshTokenRepo{},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	// Build valid initData.
 	botToken := "test-bot-token"
@@ -453,13 +517,22 @@ func TestAuthenticateTelegram_NewPlayer(t *testing.T) {
 	if playerRepo.created.TgUserID == nil || *playerRepo.created.TgUserID != 12345 {
 		t.Errorf("expected tg_user_id 12345, got %v", playerRepo.created.TgUserID)
 	}
+	if playerRepo.created.Nickname != nil {
+		t.Errorf("expected nil Poker Club nickname, got %v", playerRepo.created.Nickname)
+	}
+	if playerRepo.created.TgUserName == nil || *playerRepo.created.TgUserName != "testuser" {
+		t.Errorf("expected tg_user_name testuser, got %v", playerRepo.created.TgUserName)
+	}
+	if playerRepo.created.Password != nil {
+		t.Errorf("expected nil password, got %v", playerRepo.created.Password)
+	}
 }
 
 func TestAuthenticateTelegram_ExistingPlayer(t *testing.T) {
 	existingPlayer := &domain.Player{
-		ID:       1,
-		Nickname: "testuser",
-		TgUserID: ptrInt64(12345),
+		ID:         1,
+		TgUserName: ptrString("testuser"),
+		TgUserID:   ptrInt64(12345),
 	}
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
@@ -469,7 +542,7 @@ func TestAuthenticateTelegram_ExistingPlayer(t *testing.T) {
 		RefreshTokens: &mockRefreshTokenRepo{},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	// Build valid initData.
 	botToken := "test-bot-token"
@@ -494,7 +567,7 @@ func TestRefreshAccessToken_Success(t *testing.T) {
 		Players: &mockPlayerRepo{
 			player: &domain.Player{
 				ID:       1,
-				Nickname: "testuser",
+				Nickname: ptrString("testuser"),
 				TgUserID: ptrInt64(12345),
 			},
 		},
@@ -504,7 +577,7 @@ func TestRefreshAccessToken_Success(t *testing.T) {
 		},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	// Generate a refresh token and store its hash.
 	refreshToken, err := jwt.GenerateRefreshToken()
@@ -532,13 +605,13 @@ func TestRefreshAccessToken_Success(t *testing.T) {
 func TestRefreshAccessToken_InvalidToken(t *testing.T) {
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
-			player: &domain.Player{ID: 1, Nickname: "testuser"},
+			player: &domain.Player{ID: 1, Nickname: ptrString("testuser")},
 		},
 		ClubMembers:   &mockClubMemberRepo{},
 		RefreshTokens: &mockRefreshTokenRepo{tokens: make(map[string]*domain.RefreshToken)},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	_, err := uc.RefreshAccessToken(context.Background(), "invalid-token")
 	if err != ErrInvalidRefreshToken {
@@ -549,7 +622,7 @@ func TestRefreshAccessToken_InvalidToken(t *testing.T) {
 func TestRefreshAccessToken_ExpiredToken(t *testing.T) {
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
-			player: &domain.Player{ID: 1, Nickname: "testuser"},
+			player: &domain.Player{ID: 1, Nickname: ptrString("testuser")},
 		},
 		ClubMembers: &mockClubMemberRepo{},
 		RefreshTokens: &mockRefreshTokenRepo{
@@ -557,7 +630,7 @@ func TestRefreshAccessToken_ExpiredToken(t *testing.T) {
 		},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	refreshToken, _ := jwt.GenerateRefreshToken()
 	tokenHash := jwt.HashToken(refreshToken)
@@ -578,7 +651,7 @@ func TestRefreshAccessToken_ExpiredToken(t *testing.T) {
 func TestLogout_Success(t *testing.T) {
 	repos := &domain.Repositories{
 		Players: &mockPlayerRepo{
-			player: &domain.Player{ID: 1, Nickname: "testuser"},
+			player: &domain.Player{ID: 1, Nickname: ptrString("testuser")},
 		},
 		ClubMembers: &mockClubMemberRepo{},
 		RefreshTokens: &mockRefreshTokenRepo{
@@ -586,7 +659,7 @@ func TestLogout_Success(t *testing.T) {
 		},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	refreshToken, _ := jwt.GenerateRefreshToken()
 	tokenHash := jwt.HashToken(refreshToken)
@@ -615,7 +688,7 @@ func TestGetCurrentUser_Success(t *testing.T) {
 		ID:        1,
 		FirstName: "Test",
 		LastName:  "User",
-		Nickname:  "testuser",
+		Nickname: ptrString("testuser"),
 		TgUserID:  ptrInt64(12345),
 	}
 	repos := &domain.Repositories{
@@ -624,7 +697,7 @@ func TestGetCurrentUser_Success(t *testing.T) {
 		},
 	}
 	jwt := NewJWTManager("test-secret", "test-issuer", "test-audience", time.Hour, 24*time.Hour)
-	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger())
+	uc := NewAuthUseCase(repos, jwt, "test-bot-token", testLogger(), nil, nil)
 
 	result, err := uc.GetCurrentUser(context.Background(), 1)
 	if err != nil {
@@ -640,5 +713,9 @@ func TestGetCurrentUser_Success(t *testing.T) {
 
 // Helper function
 func ptrInt64(v int64) *int64 {
+	return &v
+}
+
+func ptrString(v string) *string {
 	return &v
 }

@@ -235,6 +235,7 @@ func serializePlayer(p *domain.Player) gin.H {
 		"first_name":   p.FirstName,
 		"last_name":    p.LastName,
 		"nickname":     p.Nickname,
+		"tg_user_name": p.TgUserName,
 		"created_at":   p.CreatedAt,
 		"updated_at":   p.UpdatedAt,
 	}

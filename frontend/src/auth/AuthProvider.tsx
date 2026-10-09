@@ -2,9 +2,7 @@
  * Authentication context provider.
  *
  * Manages authentication state, JWT tokens, and current user.
- * Integrates with Backend authentication API.
- *
- * See 07_AUTH.md, 07.1_AUTH_SECURITY.md, 06_API.md section 4.0.
+ * Tokens stay in runtime memory only (no localStorage/sessionStorage).
  */
 
 import { useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
@@ -15,23 +13,18 @@ import { AuthContext } from './AuthContext'
 import type {
   AuthContextValue,
   AuthState,
+  ChangePasswordInput,
+  CompleteTelegramRegistrationInput,
   CurrentUser,
   LoginCredentials,
+  TelegramWebAuthResult,
+  UpdateProfileInput,
 } from './index'
 
 interface AuthProviderProps {
   children: ReactNode
 }
 
-/**
- * Runtime token manager.
- *
- * Stores access and refresh tokens in runtime memory only.
- * Per 07.1_AUTH_SECURITY.md:
- * - Access token is NOT stored in localStorage/sessionStorage
- * - Refresh token is NOT stored in localStorage/sessionStorage
- * - Tokens exist only in runtime memory
- */
 class RuntimeTokenManager implements TokenManager {
   private accessToken: string | null = null
   private refreshToken: string | null = null
@@ -59,16 +52,10 @@ class RuntimeTokenManager implements TokenManager {
     this.refreshPromise = null
   }
 
-  /**
-   * Refreshes the access token using the refresh token.
-   * Uses a promise lock to prevent concurrent refresh attempts.
-   * Returns new tokens or null on failure.
-   */
   async refreshAccessToken(): Promise<{
     accessToken: string
     refreshToken: string
   } | null> {
-    // If a refresh is already in progress, return that promise
     if (this.refreshPromise) {
       return this.refreshPromise
     }
@@ -78,12 +65,10 @@ class RuntimeTokenManager implements TokenManager {
       return null
     }
 
-    // Create the refresh promise
     this.refreshPromise = this.doRefresh(refreshToken)
 
     try {
-      const result = await this.refreshPromise
-      return result
+      return await this.refreshPromise
     } finally {
       this.refreshPromise = null
     }
@@ -114,7 +99,6 @@ class RuntimeTokenManager implements TokenManager {
         return null
       }
 
-      // Update tokens with rotated pair
       this.accessToken = newAccessToken
       this.refreshToken = newRefreshToken
 
@@ -125,47 +109,42 @@ class RuntimeTokenManager implements TokenManager {
   }
 }
 
-/**
- * AuthProvider component.
- *
- * Provides authentication state and methods to the application.
- * Also creates the application-wide ApiClient with the token manager
- * and provides it via ApiClientContext.
- *
- * Handles:
- * - Initial authentication check on app load
- * - Login with credentials (Standard Web)
- * - Login with Telegram initData (Telegram Mini App)
- * - Logout
- * - Current user management
- * - 401 handling and token refresh
- */
+type BackendMe = {
+  id: number
+  first_name: string
+  last_name: string
+  nickname: string | null
+  tg_user_name?: string | null
+  email?: string | null
+  phone_number?: string | null
+  tg_user_id?: number
+  has_password?: boolean
+  created_at: string
+  updated_at: string
+}
+
+function mapCurrentUser(backendUser: BackendMe): CurrentUser {
+  return {
+    id: backendUser.id,
+    firstName: backendUser.first_name,
+    lastName: backendUser.last_name,
+    nickname: backendUser.nickname ?? null,
+    tgUserName: backendUser.tg_user_name ?? null,
+    email: backendUser.email ?? null,
+    phoneNumber: backendUser.phone_number ?? null,
+    tgUserId: backendUser.tg_user_id,
+    hasPassword: Boolean(backendUser.has_password),
+    createdAt: backendUser.created_at,
+    updatedAt: backendUser.updated_at,
+  }
+}
+
 export function AuthProvider({ children }: AuthProviderProps) {
-  console.log('[DIAG AuthProvider] MOUNT')
   const [state, setState] = useState<AuthState>('loading')
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Diagnostic: log every state change
-  useEffect(() => {
-    console.log(
-      '[DIAG AuthProvider] state changed:',
-      state,
-      'user:',
-      user?.id ?? null,
-    )
-  }, [state, user])
-
-  useEffect(() => {
-    return () => {
-      console.log('[DIAG AuthProvider] UNMOUNT')
-    }
-  }, [])
-
-  // Create token manager once and persist across re-renders
   const tokenManager = useMemo(() => new RuntimeTokenManager(), [])
-
-  // Create API client with token manager
   const env = getEnvironment()
   const apiClient = useMemo(
     () => createApiClient(env.apiBaseUrl, tokenManager),
@@ -174,74 +153,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const isAuthenticated = state === 'authenticated' && user !== null
 
-  /**
-   * Fetches current user from Backend.
-   * Called after successful login and on app initialization.
-   * Maps Backend snake_case response to frontend camelCase model.
-   */
-  const fetchCurrentUser =
-    useCallback(async (): Promise<CurrentUser | null> => {
-      console.log(
-        '[DIAG fetchCurrentUser] called, token:',
-        tokenManager.getAccessToken() ? 'present' : 'null',
-      )
-      try {
-        const response = await apiClient.get<{
-          id: number
-          first_name: string
-          last_name: string
-          nickname: string
-          tg_user_id?: number
-          created_at: string
-          updated_at: string
-        }>('/me')
+  const applyTokensAndLoadUser = useCallback(
+    async (accessToken: string, refreshToken: string) => {
+      tokenManager.setTokens(accessToken, refreshToken)
+      const response = await apiClient.get<BackendMe>('/me')
+      const currentUser = mapCurrentUser(response.data)
+      setUser(currentUser)
+      setState('authenticated')
+    },
+    [apiClient, tokenManager],
+  )
 
-        // Map Backend snake_case response to frontend camelCase model
-        const backendUser = response.data
-        console.log('[DIAG fetchCurrentUser] success:', backendUser.id)
-        return {
-          id: backendUser.id,
-          firstName: backendUser.first_name,
-          lastName: backendUser.last_name,
-          nickname: backendUser.nickname,
-          tgUserId: backendUser.tg_user_id,
-          createdAt: backendUser.created_at,
-          updatedAt: backendUser.updated_at,
-        }
-      } catch (error) {
-        console.log('[DIAG fetchCurrentUser] error:', error)
-        // If 401, user is not authenticated
-        if (
-          error instanceof Error &&
-          'statusCode' in error &&
-          error.statusCode === 401
-        ) {
-          return null
-        }
-        // For other errors, re-throw
-        throw error
+  const fetchCurrentUser = useCallback(async (): Promise<CurrentUser | null> => {
+    try {
+      const response = await apiClient.get<BackendMe>('/me')
+      return mapCurrentUser(response.data)
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'statusCode' in error &&
+        error.statusCode === 401
+      ) {
+        return null
       }
-    }, [apiClient])
+      throw error
+    }
+  }, [apiClient])
 
-  /**
-   * Initializes authentication state on app load.
-   * Checks if user has an active session by calling /me.
-   */
   useEffect(() => {
     let mounted = true
 
     async function initializeAuth() {
-      console.log(
-        '[DIAG initializeAuth] started, tokenManager.accessToken:',
-        tokenManager.getAccessToken() ? 'present' : 'null',
-      )
       setState('loading')
       try {
+        // Without persisted tokens, /me will 401 — that is expected.
+        if (!tokenManager.getAccessToken()) {
+          if (mounted) {
+            setUser(null)
+            setState('unauthenticated')
+          }
+          return
+        }
         const currentUser = await fetchCurrentUser()
-        console.log(
-          '[DIAG initializeAuth] fetchCurrentUser result:',
-          currentUser ? `user ${currentUser.id}` : 'null',
-        )
         if (mounted) {
           if (currentUser) {
             setUser(currentUser)
@@ -251,8 +204,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setState('unauthenticated')
           }
         }
-      } catch (e) {
-        console.log('[DIAG initializeAuth] error:', e)
+      } catch {
         if (mounted) {
           setUser(null)
           setState('unauthenticated')
@@ -265,13 +217,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       mounted = false
     }
-  }, [fetchCurrentUser])
+  }, [fetchCurrentUser, tokenManager])
 
-  /**
-   * Login with credentials (Standard Web mode).
-   * Calls POST /api/v1/auth/login.
-   * Backend returns snake_case tokens which are mapped to runtime storage.
-   */
   const login = useCallback(
     async (credentials: LoginCredentials): Promise<void> => {
       setIsLoading(true)
@@ -279,79 +226,166 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const response = await apiClient.post<{
           access_token: string
           refresh_token: string
-          token_type: string
         }>('/auth/login', {
-          body: credentials,
+          body: {
+            email: credentials.email,
+            password: credentials.password,
+          },
           skipAuth: true,
         })
 
-        // Map Backend snake_case response to runtime token storage
-        tokenManager.setTokens(
+        await applyTokensAndLoadUser(
           response.data.access_token,
           response.data.refresh_token,
         )
-
-        // Fetch current user with the new access token
-        const currentUser = await fetchCurrentUser()
-        if (currentUser) {
-          setUser(currentUser)
-          setState('authenticated')
-        } else {
-          throw new Error('Failed to fetch user after login')
-        }
       } finally {
         setIsLoading(false)
       }
     },
-    [apiClient, fetchCurrentUser, tokenManager],
+    [apiClient, applyTokensAndLoadUser],
   )
 
-  /**
-   * Login with Telegram initData (Telegram Mini App mode).
-   * Calls POST /api/v1/auth/telegram with initData.
-   */
   const loginWithTelegram = useCallback(
     async (initData: string): Promise<void> => {
-      console.log('[DIAG loginWithTelegram] started')
       setIsLoading(true)
       try {
         const response = await apiClient.post<{
           access_token: string
           refresh_token: string
-          token_type: string
         }>('/auth/telegram', {
           body: { init_data: initData },
           skipAuth: true,
         })
 
-        // Map Backend snake_case response to runtime token storage
-        tokenManager.setTokens(
+        await applyTokensAndLoadUser(
           response.data.access_token,
           response.data.refresh_token,
         )
-        console.log('[DIAG loginWithTelegram] tokens set')
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [apiClient, applyTokensAndLoadUser],
+  )
 
-        // Fetch current user with the new access token
+  const loginWithTelegramWeb = useCallback(
+    async (
+      idToken: string,
+      challengeToken: string,
+    ): Promise<TelegramWebAuthResult> => {
+      setIsLoading(true)
+      try {
+        const response = await apiClient.post<{
+          access_token?: string
+          refresh_token?: string
+          registration_required?: boolean
+          registration_token?: string
+        }>('/auth/telegram/web', {
+          body: {
+            id_token: idToken,
+            challenge_token: challengeToken,
+          },
+          skipAuth: true,
+        })
+
+        if (response.data.registration_required) {
+          return {
+            authenticated: false,
+            registrationRequired: true,
+            registrationToken: response.data.registration_token,
+          }
+        }
+
+        if (!response.data.access_token || !response.data.refresh_token) {
+          throw new Error('Telegram Web login failed: missing tokens')
+        }
+
+        await applyTokensAndLoadUser(
+          response.data.access_token,
+          response.data.refresh_token,
+        )
+        return { authenticated: true }
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [apiClient, applyTokensAndLoadUser],
+  )
+
+  const completeTelegramRegistration = useCallback(
+    async (input: CompleteTelegramRegistrationInput): Promise<void> => {
+      setIsLoading(true)
+      try {
+        const response = await apiClient.post<{
+          access_token: string
+          refresh_token: string
+        }>('/auth/telegram/web/register', {
+          body: {
+            registration_token: input.registrationToken,
+            email: input.email,
+            password: input.password,
+            password_confirmation: input.passwordConfirmation,
+            nickname: input.nickname,
+            first_name: input.firstName,
+            last_name: input.lastName,
+          },
+          skipAuth: true,
+        })
+
+        await applyTokensAndLoadUser(
+          response.data.access_token,
+          response.data.refresh_token,
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [apiClient, applyTokensAndLoadUser],
+  )
+
+  const updateProfile = useCallback(
+    async (input: UpdateProfileInput): Promise<void> => {
+      setIsLoading(true)
+      try {
+        const response = await apiClient.patch<BackendMe>('/me', {
+          body: {
+            first_name: input.firstName,
+            last_name: input.lastName,
+            nickname: input.nickname,
+            email: input.email,
+            phone_number: input.phoneNumber,
+          },
+        })
+        setUser(mapCurrentUser(response.data))
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [apiClient],
+  )
+
+  const changePassword = useCallback(
+    async (input: ChangePasswordInput): Promise<void> => {
+      setIsLoading(true)
+      try {
+        await apiClient.post('/me/password', {
+          body: {
+            current_password: input.currentPassword,
+            new_password: input.newPassword,
+            password_confirmation: input.passwordConfirmation,
+          },
+        })
         const currentUser = await fetchCurrentUser()
         if (currentUser) {
           setUser(currentUser)
-          setState('authenticated')
-          console.log('[DIAG loginWithTelegram] success, state=authenticated')
-        } else {
-          throw new Error('Failed to fetch user after Telegram login')
         }
       } finally {
         setIsLoading(false)
       }
     },
-    [apiClient, fetchCurrentUser, tokenManager],
+    [apiClient, fetchCurrentUser],
   )
 
-  /**
-   * Logout current user.
-   * Calls POST /api/v1/auth/logout with refresh token.
-   * Clears runtime tokens regardless of Backend response.
-   */
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true)
     try {
@@ -363,9 +397,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         })
       }
     } catch {
-      // Ignore logout errors — always clear local state
+      // Ignore logout errors
     } finally {
-      // Always clear tokens and state regardless of Backend response
       tokenManager.clearTokens()
       setUser(null)
       setState('unauthenticated')
@@ -373,10 +406,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [apiClient, tokenManager])
 
-  /**
-   * Refresh current user data from Backend.
-   * Useful after mutations that might affect user data.
-   */
   const refreshUser = useCallback(async (): Promise<void> => {
     const currentUser = await fetchCurrentUser()
     if (currentUser) {
@@ -394,6 +423,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     login,
     loginWithTelegram,
+    loginWithTelegramWeb,
+    completeTelegramRegistration,
+    updateProfile,
+    changePassword,
     logout,
     refreshUser,
   }

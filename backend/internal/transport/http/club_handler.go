@@ -78,9 +78,9 @@ func (h *ClubHandler) CreateClub(c *gin.Context) {
 
 	firstName := player.FirstName
 	lastName := player.LastName
-	nickname := player.Nickname
+	tgUserName := player.TgUserNameOrEmpty()
 
-	club, err := h.svc.CreateClub(c.Request.Context(), tgUserID, firstName, lastName, nickname, req.Name)
+	club, err := h.svc.CreateClub(c.Request.Context(), tgUserID, firstName, lastName, tgUserName, req.Name)
 	if err != nil {
 		writeServiceError(c, err)
 		return

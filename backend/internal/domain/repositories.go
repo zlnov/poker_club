@@ -24,8 +24,13 @@ type PlayerRepository interface {
 	Create(ctx context.Context, player *Player) (int64, error)
 	GetByID(ctx context.Context, id int64) (*Player, error)
 	GetByTgUserID(ctx context.Context, tgUserID int64) (*Player, error)
+	GetByEmail(ctx context.Context, email string) (*Player, error)
 	GetByNickname(ctx context.Context, nickname string) (*Player, error)
+	GetByTgUserName(ctx context.Context, tgUserName string) (*Player, error)
 	UpdateLastSeen(ctx context.Context, id int64) error
+	UpdateTgUserName(ctx context.Context, id int64, tgUserName *string) error
+	UpdateProfile(ctx context.Context, id int64, firstName, lastName string, nickname, email, phoneNumber *string) error
+	UpdatePassword(ctx context.Context, id int64, passwordHash string) error
 }
 
 // ClubMemberRepository defines operations for club member persistence.

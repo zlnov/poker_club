@@ -24,6 +24,14 @@ type Config struct {
 	JWTIssuer       string
 	JWTAudience     string
 	FrontendOrigins []string
+
+	// Telegram Web Login (OIDC)
+	TelegramLoginClientID     string
+	TelegramLoginClientSecret string
+	TelegramLoginIssuer       string
+	TelegramLoginJWKSURL      string
+	TelegramLoginNonceTTL     time.Duration
+	RegistrationTokenTTL      time.Duration
 }
 
 // Load reads configuration from environment variables and returns a Config.
@@ -48,9 +56,15 @@ func Load() *Config {
 			[]string{
 				"http://localhost:3000",
 				"http://localhost:3001",
-				"https://fa4b-87-120-126-215.ngrok-free.app", // ngrok: forwarding ngrok -> http://localhost:3000
+				"https://washstand-lankiness-emcee.ngrok-free.dev", // ngrok: forwarding ngrok -> http://localhost:3000
 			},
 		),
+		TelegramLoginClientID:     os.Getenv("TELEGRAM_LOGIN_CLIENT_ID"),
+		TelegramLoginClientSecret: os.Getenv("TELEGRAM_LOGIN_CLIENT_SECRET"),
+		TelegramLoginIssuer:       getEnv("TELEGRAM_LOGIN_ISSUER", "https://oauth.telegram.org"),
+		TelegramLoginJWKSURL:      getEnv("TELEGRAM_LOGIN_JWKS_URL", "https://oauth.telegram.org/.well-known/jwks.json"),
+		TelegramLoginNonceTTL:     getEnvDuration("TELEGRAM_LOGIN_NONCE_TTL", 5*time.Minute),
+		RegistrationTokenTTL:      getEnvDuration("REGISTRATION_TOKEN_TTL", 15*time.Minute),
 	}
 }
 
@@ -94,6 +108,18 @@ func getEnvBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }
 
 // DSN returns the PostgreSQL connection string.
