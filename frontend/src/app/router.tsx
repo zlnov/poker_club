@@ -23,7 +23,7 @@
 
 import { createBrowserRouter } from 'react-router-dom'
 import {
-  HomePage,
+  LandingPage,
   LoginPage,
   RegisterPage,
   ClubsPage,
@@ -50,7 +50,7 @@ import {
  * Application routes.
  *
  * Route structure:
- * - / (root) — Home page (wrapped in RootLayout)
+ * - / (root) — Marketing landing page (no AppShell)
  * - /login — Login page (public route, redirects if authenticated)
  * - /clubs — Club list (protected)
  * - /clubs/:clubId — Club dashboard (wrapped in ClubLayout with tabs, protected)
@@ -71,7 +71,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <HomePage />,
+        element: <LandingPage />,
       },
       {
         path: 'login',
