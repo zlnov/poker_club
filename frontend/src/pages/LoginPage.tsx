@@ -137,6 +137,13 @@ export function LoginPage() {
           style={{ maxWidth: '400px', width: '100%' }}
         >
           <Stack gap="md" align="center">
+            <img
+              src="/landing/logo/logo-auth.png"
+              alt=""
+              width={192}
+              height={192}
+              style={{ width: 192, height: 192, objectFit: 'contain' }}
+            />
             <Title order={1} ta="center">
               Poker Club
             </Title>
@@ -168,6 +175,13 @@ export function LoginPage() {
         style={{ maxWidth: '400px', width: '100%' }}
       >
         <Stack gap="lg" align="center">
+          <img
+            src="/landing/logo/logo-auth.png"
+            alt=""
+            width={192}
+            height={192}
+            style={{ width: 192, height: 192, objectFit: 'contain' }}
+          />
           <Title order={1} ta="center">
             Poker Club
           </Title>

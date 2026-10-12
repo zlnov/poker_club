@@ -4,6 +4,7 @@
  * See 04_FE_SPEC.md section 9 (Frontend Architecture).
  */
 
+export { LandingPage } from './LandingPage'
 export { HomePage } from './HomePage'
 export { LoginPage } from './LoginPage'
 export { RegisterPage } from './RegisterPage'
