@@ -2,11 +2,17 @@
  * Authentication context provider.
  *
  * Manages authentication state, JWT tokens, and current user.
- * Tokens stay in runtime memory only (no localStorage/sessionStorage).
+ * Production tokens stay in runtime memory only.
+ * Demo sessions use an opaque token in localStorage.
  */
 
 import { useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
 import { createApiClient, type TokenManager } from '../api'
+import {
+  clearDemoSession,
+  loadDemoSession,
+  saveDemoSession,
+} from '../demo'
 import { getEnvironment } from '../env'
 import { ApiClientContext } from './ApiClientContext'
 import { AuthContext } from './AuthContext'
@@ -143,6 +149,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>('loading')
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isDemo, setIsDemo] = useState(false)
 
   const tokenManager = useMemo(() => new RuntimeTokenManager(), [])
   const env = getEnvironment()
@@ -186,10 +193,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
     async function initializeAuth() {
       setState('loading')
       try {
+        const demo = loadDemoSession()
+        if (demo) {
+          tokenManager.setTokens(demo.accessToken, '')
+          const currentUser = await fetchCurrentUser()
+          if (mounted) {
+            if (currentUser) {
+              setUser(currentUser)
+              setIsDemo(true)
+              setState('authenticated')
+            } else {
+              clearDemoSession()
+              tokenManager.clearTokens()
+              setUser(null)
+              setIsDemo(false)
+              setState('unauthenticated')
+            }
+          }
+          return
+        }
+
         // Without persisted tokens, /me will 401 — that is expected.
         if (!tokenManager.getAccessToken()) {
           if (mounted) {
             setUser(null)
+            setIsDemo(false)
             setState('unauthenticated')
           }
           return
@@ -198,15 +226,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (mounted) {
           if (currentUser) {
             setUser(currentUser)
+            setIsDemo(false)
             setState('authenticated')
           } else {
             setUser(null)
+            setIsDemo(false)
             setState('unauthenticated')
           }
         }
       } catch {
         if (mounted) {
+          clearDemoSession()
           setUser(null)
+          setIsDemo(false)
           setState('unauthenticated')
         }
       }
@@ -223,6 +255,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     async (credentials: LoginCredentials): Promise<void> => {
       setIsLoading(true)
       try {
+        clearDemoSession()
+        setIsDemo(false)
         const response = await apiClient.post<{
           access_token: string
           refresh_token: string
@@ -386,21 +420,64 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [apiClient, fetchCurrentUser],
   )
 
+  const startDemo = useCallback(async (): Promise<number> => {
+    setIsLoading(true)
+    try {
+      clearDemoSession()
+      tokenManager.clearTokens()
+
+      const response = await apiClient.post<{
+        access_token: string
+        club_id: number
+        expires_at: string
+      }>('/demo/sessions', { skipAuth: true })
+
+      const accessToken = response.data.access_token
+      const clubId = response.data.club_id
+      const expiresAt = response.data.expires_at
+      if (!accessToken || !clubId || !expiresAt) {
+        throw new Error('Demo session response is incomplete')
+      }
+
+      saveDemoSession({ accessToken, clubId, expiresAt })
+      tokenManager.setTokens(accessToken, '')
+
+      const currentUser = await fetchCurrentUser()
+      if (!currentUser) {
+        clearDemoSession()
+        tokenManager.clearTokens()
+        throw new Error('Failed to load demo user')
+      }
+
+      setUser(currentUser)
+      setIsDemo(true)
+      setState('authenticated')
+      return clubId
+    } finally {
+      setIsLoading(false)
+    }
+  }, [apiClient, fetchCurrentUser, tokenManager])
+
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true)
     try {
-      const refreshToken = tokenManager.getRefreshToken()
-      if (refreshToken) {
-        await apiClient.post('/auth/logout', {
-          body: { refresh_token: refreshToken },
-          skipAuth: true,
-        })
+      const demo = loadDemoSession()
+      if (!demo) {
+        const refreshToken = tokenManager.getRefreshToken()
+        if (refreshToken) {
+          await apiClient.post('/auth/logout', {
+            body: { refresh_token: refreshToken },
+            skipAuth: true,
+          })
+        }
       }
     } catch {
       // Ignore logout errors
     } finally {
+      clearDemoSession()
       tokenManager.clearTokens()
       setUser(null)
+      setIsDemo(false)
       setState('unauthenticated')
       setIsLoading(false)
     }
@@ -411,7 +488,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (currentUser) {
       setUser(currentUser)
     } else {
+      clearDemoSession()
       setUser(null)
+      setIsDemo(false)
       setState('unauthenticated')
     }
   }, [fetchCurrentUser])
@@ -421,10 +500,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     isAuthenticated,
     isLoading,
+    isDemo,
     login,
     loginWithTelegram,
     loginWithTelegramWeb,
     completeTelegramRegistration,
+    startDemo,
     updateProfile,
     changePassword,
     logout,

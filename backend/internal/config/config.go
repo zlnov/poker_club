@@ -25,6 +25,15 @@ type Config struct {
 	JWTAudience     string
 	FrontendOrigins []string
 
+	// Demo mode (optional second PostgreSQL database)
+	DemoEnabled    bool
+	DemoDBHost     string
+	DemoDBPort     string
+	DemoDBUser     string
+	DemoDBPassword string
+	DemoDBName     string
+	DemoDBSSLMode  string
+
 	// Telegram Web Login (OIDC)
 	TelegramLoginClientID     string
 	TelegramLoginClientSecret string
@@ -36,14 +45,18 @@ type Config struct {
 
 // Load reads configuration from environment variables and returns a Config.
 func Load() *Config {
+	dbHost := getEnv("DB_HOST", "localhost")
+	dbPort := getEnv("DB_PORT", "5432")
+	dbSSLMode := getEnv("DB_SSLMODE", "disable")
+
 	return &Config{
 		BotToken:    os.Getenv("BOT_TOKEN"),
-		DBHost:      getEnv("DB_HOST", "localhost"),
-		DBPort:      getEnv("DB_PORT", "5432"),
+		DBHost:      dbHost,
+		DBPort:      dbPort,
 		DBUser:      getEnv("DB_USER", "postgres"),
 		DBPassword:  os.Getenv("DB_PASSWORD"),
 		DBName:      getEnv("DB_NAME", "poker_club"),
-		DBSSLMode:   getEnv("DB_SSLMODE", "disable"),
+		DBSSLMode:   dbSSLMode,
 		WebhookURL:  os.Getenv("WEBHOOK_URL"),
 		WebhookPort: getEnv("WEBHOOK_PORT", "8080"),
 		LongPolling: getEnvBool("LONG_POLLING", true),
@@ -59,6 +72,13 @@ func Load() *Config {
 				"https://washstand-lankiness-emcee.ngrok-free.dev", // ngrok: forwarding ngrok -> http://localhost:3000
 			},
 		),
+		DemoEnabled:    getEnvBool("DEMO_ENABLED", false),
+		DemoDBHost:     getEnv("DEMO_DB_HOST", dbHost),
+		DemoDBPort:     getEnv("DEMO_DB_PORT", dbPort),
+		DemoDBUser:     getEnv("DEMO_DB_USER", getEnv("DB_USER", "postgres")),
+		DemoDBPassword: firstNonEmpty(os.Getenv("DEMO_DB_PASSWORD"), os.Getenv("DB_PASSWORD")),
+		DemoDBName:     getEnv("DEMO_DB_NAME", "poker_club_demo"),
+		DemoDBSSLMode:  getEnv("DEMO_DB_SSLMODE", dbSSLMode),
 		TelegramLoginClientID:     os.Getenv("TELEGRAM_LOGIN_CLIENT_ID"),
 		TelegramLoginClientSecret: os.Getenv("TELEGRAM_LOGIN_CLIENT_SECRET"),
 		TelegramLoginIssuer:       getEnv("TELEGRAM_LOGIN_ISSUER", "https://oauth.telegram.org"),
@@ -131,6 +151,26 @@ func (c *Config) DSN() string {
 		" dbname=" + c.DBName +
 		" sslmode=" + c.DBSSLMode +
 		" pool_max_conns=10"
+}
+
+// DemoDSN returns the PostgreSQL connection string for the demo database.
+func (c *Config) DemoDSN() string {
+	return "host=" + c.DemoDBHost +
+		" port=" + c.DemoDBPort +
+		" user=" + c.DemoDBUser +
+		" password=" + c.DemoDBPassword +
+		" dbname=" + c.DemoDBName +
+		" sslmode=" + c.DemoDBSSLMode +
+		" pool_max_conns=5"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // WebhookPortDuration returns the webhook port with a colon prefix for Listen.

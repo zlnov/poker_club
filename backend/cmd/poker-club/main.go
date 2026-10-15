@@ -11,6 +11,7 @@ import (
 
 	"poker-club/backend/internal/auth"
 	"poker-club/backend/internal/config"
+	"poker-club/backend/internal/demo"
 	"poker-club/backend/internal/repository/postgres"
 	"poker-club/backend/internal/service"
 	transporthttp "poker-club/backend/internal/transport/http"
@@ -29,14 +30,10 @@ func run() error {
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Load configuration
 	cfg := config.Load()
-
-	// Set up logging
 	log := setupLogger(cfg.LogLevel)
 	log.Info("starting poker-club backend")
 
-	// Connect to database and run migrations
 	db, err := postgres.New(ctx, cfg)
 	if err != nil {
 		log.Error("failed to connect to database", "error", err)
@@ -45,19 +42,15 @@ func run() error {
 	defer db.Close()
 	log.Info("database connected and migrated")
 
-	// Create repositories
 	repos := postgres.NewRepositories(db)
-
-	// Create service
 	svc := service.New(repos, log)
 
-	// Create JWT manager and auth use case
 	jwtManager := auth.NewJWTManager(
 		cfg.JWTSecret,
 		cfg.JWTIssuer,
 		cfg.JWTAudience,
-		70*time.Hour,   // access token lifetime per 07.1_AUTH_SECURITY.md
-		15*24*time.Hour, // refresh token lifetime: 15 days per 07.1_AUTH_SECURITY.md
+		70*time.Hour,
+		15*24*time.Hour,
 	)
 
 	var oidcValidator *auth.TelegramOIDCValidator
@@ -80,10 +73,39 @@ func run() error {
 
 	authUC := auth.NewAuthUseCase(repos, jwtManager, cfg.BotToken, log, oidcValidator, challengeMgr)
 
-	// Create HTTP server
-	httpServer := transporthttp.NewServer(cfg, svc, jwtManager, authUC)
+	// Optional demo database — failure must not stop production.
+	var demoSvc *demo.Service
+	var demoAppSvc *service.Service
+	var demoDB *postgres.DB
+	if cfg.DemoEnabled {
+		demoDB, err = postgres.NewDemo(ctx, cfg)
+		if err != nil {
+			log.Warn("demo database unavailable; continuing without demo mode",
+				"error", err,
+				"demo_db_name", cfg.DemoDBName,
+			)
+		} else {
+			demoRepos := postgres.NewRepositories(demoDB)
+			demoSvc = demo.NewService(demoDB, demoRepos, log)
+			demoAppSvc = service.New(demoRepos, log)
+			// Intentionally do NOT call demoAppSvc.SetNotifier — no Telegram in demo.
+			log.Info("demo database connected and migrated", "demo_db_name", cfg.DemoDBName)
+			if err := demoSvc.EnsureTemplate(ctx); err != nil {
+				log.Warn("demo template unavailable; demo sessions will fail until seed succeeds",
+					"error", err,
+				)
+			}
+			go demoSvc.StartCleanupLoop(ctx)
+		}
+	} else {
+		log.Info("demo mode disabled (DEMO_ENABLED=false)")
+	}
+	if demoDB != nil {
+		defer demoDB.Close()
+	}
 
-	// Create Telegram bot (optional — app can run without a valid token)
+	httpServer := transporthttp.NewServer(cfg, svc, jwtManager, authUC, demoSvc, demoAppSvc)
+
 	var bot *telegram.Bot
 	if cfg.BotToken == "" || cfg.BotToken == "test" {
 		log.Warn("bot token not configured, skipping telegram bot")
@@ -93,17 +115,13 @@ func run() error {
 			log.Error("failed to create telegram bot", "error", err)
 			return fmt.Errorf("failed to create telegram bot: %w", err)
 		}
-		// Wire the bot as the game notifier so that game creation
-		// sends personal invitations to all active club members.
 		svc.SetNotifier(bot)
 	}
 
-	// Register webhook handler on HTTP server (if bot is available)
 	if bot != nil {
 		httpServer.RegisterWebhookHandler(bot.WebhookHandler())
 	}
 
-	// Start HTTP server (serves healthcheck and webhook)
 	go func() {
 		log.Info("http server starting", "addr", cfg.WebhookAddr())
 		if err := httpServer.Start(); err != nil {
@@ -111,7 +129,6 @@ func run() error {
 		}
 	}()
 
-	// Set up Telegram updates: webhook or long polling
 	if bot != nil {
 		if cfg.LongPolling {
 			log.Info("using long polling mode (development)")
@@ -132,11 +149,9 @@ func run() error {
 
 	log.Info("application started")
 
-	// Wait for interrupt signal
 	<-ctx.Done()
 	log.Info("shutdown signal received")
 
-	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

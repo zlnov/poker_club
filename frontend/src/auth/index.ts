@@ -60,10 +60,12 @@ export interface AuthContextValue {
   user: CurrentUser | null
   isAuthenticated: boolean
   isLoading: boolean
+  isDemo: boolean
   login: (credentials: LoginCredentials) => Promise<void>
   loginWithTelegram: (initData: string) => Promise<void>
   loginWithTelegramWeb: (idToken: string, challengeToken: string) => Promise<TelegramWebAuthResult>
   completeTelegramRegistration: (input: CompleteTelegramRegistrationInput) => Promise<void>
+  startDemo: () => Promise<number>
   updateProfile: (input: UpdateProfileInput) => Promise<void>
   changePassword: (input: ChangePasswordInput) => Promise<void>
   logout: () => Promise<void>
@@ -75,10 +77,12 @@ export const AUTH_CONTEXT_PLACEHOLDER: AuthContextValue = {
   user: null,
   isAuthenticated: false,
   isLoading: false,
+  isDemo: false,
   login: async () => {},
   loginWithTelegram: async () => {},
   loginWithTelegramWeb: async () => ({ authenticated: false }),
   completeTelegramRegistration: async () => {},
+  startDemo: async () => 0,
   updateProfile: async () => {},
   changePassword: async () => {},
   logout: async () => {},

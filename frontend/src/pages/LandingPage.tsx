@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMediaQuery } from '@mantine/hooks'
 import {
   IconArrowRight,
@@ -17,6 +17,7 @@ import {
   IconUsers,
   IconX,
 } from '@tabler/icons-react'
+import { useAuth } from '../auth'
 import styles from './landing/LandingPage.module.css'
 
 const SECTIONS = [
@@ -212,12 +213,16 @@ function getFlipTransform(origin: OriginRect, last: DOMRect): string {
 }
 
 export function LandingPage() {
+  const navigate = useNavigate()
+  const { startDemo, isLoading: authLoading } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [scenarioStep, setScenarioStep] = useState(0)
   const [statView, setStatView] = useState(0)
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null)
   const [scenarioLayoutWidth, setScenarioLayoutWidth] = useState(0)
+  const [demoStarting, setDemoStarting] = useState(false)
+  const [demoError, setDemoError] = useState<string | null>(null)
   const lightboxRef = useRef<HTMLDivElement>(null)
   const lightboxImageRef = useRef<HTMLImageElement>(null)
   const scenarioLayoutRef = useRef<HTMLDivElement>(null)
@@ -231,6 +236,21 @@ export function LandingPage() {
   const goToSection = (id: string) => {
     setMenuOpen(false)
     scrollToSection(id)
+  }
+
+  const handleStartDemo = async () => {
+    setDemoError(null)
+    setDemoStarting(true)
+    try {
+      const clubId = await startDemo()
+      navigate(`/clubs/${clubId}`)
+    } catch {
+      setDemoError(
+        'Демо сейчас недоступно. Попробуйте позже или создайте аккаунт.',
+      )
+    } finally {
+      setDemoStarting(false)
+    }
   }
 
   const openImagePreview = (
@@ -514,12 +534,22 @@ export function LandingPage() {
                 <button
                   type="button"
                   className={styles.btnSecondary}
-                  onClick={() => goToSection('how-it-works')}
+                  onClick={() => {
+                    void handleStartDemo()
+                  }}
+                  disabled={demoStarting || authLoading}
                 >
                   <IconPlayerPlay size={18} />
-                  Посмотреть, как работает
+                  {demoStarting
+                    ? 'Загрузка демо…'
+                    : 'Посмотреть, как работает'}
                 </button>
               </div>
+              {demoError ? (
+                <p className={styles.heroLead} role="alert">
+                  {demoError}
+                </p>
+              ) : null}
             </div>
 
             <div className={styles.heroVisual}>

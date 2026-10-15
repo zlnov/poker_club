@@ -109,6 +109,14 @@ type RefreshTokenRepository interface {
 	DeleteExpired(ctx context.Context) error
 }
 
+// DemoSessionRepository defines operations for demo session persistence (demo DB only).
+type DemoSessionRepository interface {
+	Create(ctx context.Context, session *DemoSession) (int64, error)
+	GetByTokenHash(ctx context.Context, tokenHash string) (*DemoSession, error)
+	ListExpired(ctx context.Context, before time.Time) ([]*DemoSession, error)
+	Delete(ctx context.Context, id int64) error
+}
+
 // Repositories groups all repository interfaces.
 type Repositories struct {
 	Clubs            ClubRepository
@@ -119,4 +127,5 @@ type Repositories struct {
 	Events           EventRepository
 	PlayerStatistics PlayerStatisticsRepository
 	RefreshTokens    RefreshTokenRepository
+	DemoSessions     DemoSessionRepository
 }
