@@ -6,14 +6,13 @@
  * which in turn use this client (see 04_FE_SPEC.md section 14).
  *
  * Authentication uses JWT Bearer tokens (07_AUTH.md, 07.1_AUTH_SECURITY.md).
- * Access tokens are stored in runtime memory only — never in localStorage/sessionStorage.
- * The client adds `Authorization: Bearer <access_token>` to protected requests.
+ * Production access tokens are stored in runtime memory only.
+ * Demo mode uses an opaque bearer token in localStorage and prefixes paths with `/demo`.
  *
- * Token refresh is handled automatically: when a request returns 401,
- * the client attempts to refresh the access token using the refresh token.
- * The original request is retried once after a successful refresh.
+ * Token refresh is handled automatically for production JWT. Demo tokens are not refreshed.
  */
 
+import { clearDemoSession, loadDemoSession } from '../demo'
 import { parseApiError } from './errors'
 
 /**
@@ -88,10 +87,25 @@ export class ApiClient {
   }
 
   /**
+   * Rewrites API paths into `/demo/...` when a demo session is active.
+   * Session creation (`/demo/sessions`) is left unchanged.
+   */
+  private resolvePath(path: string): string {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    if (normalizedPath === '/demo/sessions' || normalizedPath.startsWith('/demo/')) {
+      return normalizedPath
+    }
+    if (loadDemoSession()) {
+      return `/demo${normalizedPath}`
+    }
+    return normalizedPath
+  }
+
+  /**
    * Builds a full URL with optional query parameters.
    */
   private buildUrl(path: string, query?: ApiRequestOptions['query']): string {
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    const normalizedPath = this.resolvePath(path)
     const url = new URL(this.baseUrl + normalizedPath)
 
     if (query) {
@@ -124,9 +138,11 @@ export class ApiClient {
       ...options.headers,
     }
 
-    // Add Authorization header if not skipped and token is available
+    // Add Authorization header if not skipped and token is available.
+    // Prefer an active demo token from localStorage over in-memory JWT.
     if (!options.skipAuth) {
-      const token = this.tokenManager.getAccessToken()
+      const demo = loadDemoSession()
+      const token = demo?.accessToken ?? this.tokenManager.getAccessToken()
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
@@ -171,15 +187,24 @@ export class ApiClient {
     }
 
     if (!response.ok) {
-      // Handle 401: attempt token refresh and retry once
-      if (status === 401 && !skipAuth) {
+      // Demo tokens are opaque and not refreshable.
+      if (status === 401 && !skipAuth && loadDemoSession()) {
+        clearDemoSession()
+        this.tokenManager.clearTokens()
+        throw parseApiError(responseBody, status)
+      }
+
+      // Handle 401: attempt production JWT refresh and retry once
+      if (status === 401 && !skipAuth && !loadDemoSession()) {
         const refreshed = await this.tokenManager.refreshAccessToken()
         if (refreshed) {
-          // Retry the original request with new token
           const newHeaders = this.buildHeaders({ ...options, skipAuth: false })
           const retryResponse = await fetch(url, {
             method,
-            headers: newHeaders,
+            headers: {
+              ...newHeaders,
+              'ngrok-skip-browser-warning': 'true',
+            },
             body: this.serializeBody(body),
           })
 

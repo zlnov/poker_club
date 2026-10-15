@@ -1242,7 +1242,81 @@ func NewRepositories(db *DB) *domain.Repositories {
 		Events:           &eventRepository{db: db},
 		PlayerStatistics: &playerStatisticsRepository{db: db},
 		RefreshTokens:    &refreshTokenRepository{db: db},
+		DemoSessions:     &demoSessionRepository{db: db},
 	}
+}
+
+// demoSessionRepository implements domain.DemoSessionRepository.
+type demoSessionRepository struct {
+	db *DB
+}
+
+func (r *demoSessionRepository) Create(ctx context.Context, session *domain.DemoSession) (int64, error) {
+	query := `
+		INSERT INTO demo_sessions (token_hash, club_id, player_id, expires_at, created_at)
+		VALUES ($1, $2, $3, $4, NOW())
+		RETURNING id
+	`
+	var id int64
+	err := r.db.Pool.QueryRow(ctx, query,
+		session.TokenHash, session.ClubID, session.PlayerID, session.ExpiresAt,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create demo session: %w", err)
+	}
+	return id, nil
+}
+
+func (r *demoSessionRepository) GetByTokenHash(ctx context.Context, tokenHash string) (*domain.DemoSession, error) {
+	query := `
+		SELECT id, token_hash, club_id, player_id, expires_at, created_at
+		FROM demo_sessions WHERE token_hash = $1
+	`
+	var s domain.DemoSession
+	err := r.db.Pool.QueryRow(ctx, query, tokenHash).Scan(
+		&s.ID, &s.TokenHash, &s.ClubID, &s.PlayerID, &s.ExpiresAt, &s.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get demo session: %w", err)
+	}
+	return &s, nil
+}
+
+func (r *demoSessionRepository) ListExpired(ctx context.Context, before time.Time) ([]*domain.DemoSession, error) {
+	query := `
+		SELECT id, token_hash, club_id, player_id, expires_at, created_at
+		FROM demo_sessions WHERE expires_at < $1
+		ORDER BY expires_at ASC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, before)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list expired demo sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var sessions []*domain.DemoSession
+	for rows.Next() {
+		var s domain.DemoSession
+		if err := rows.Scan(&s.ID, &s.TokenHash, &s.ClubID, &s.PlayerID, &s.ExpiresAt, &s.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan demo session: %w", err)
+		}
+		sessions = append(sessions, &s)
+	}
+	return sessions, nil
+}
+
+func (r *demoSessionRepository) Delete(ctx context.Context, id int64) error {
+	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM demo_sessions WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete demo session: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // refreshTokenRepository implements domain.RefreshTokenRepository.

@@ -9,6 +9,7 @@ import (
 
 	"poker-club/backend/internal/auth"
 	"poker-club/backend/internal/config"
+	"poker-club/backend/internal/demo"
 	"poker-club/backend/internal/service"
 )
 
@@ -20,18 +21,23 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server with routes and middleware configured.
-func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, authUC *auth.AuthUseCase) *Server {
-	// Disable debug mode in production
+// demoSvc / demoAppSvc may be nil when demo mode is disabled or unavailable.
+func NewServer(
+	cfg *config.Config,
+	svc *service.Service,
+	jwt *auth.JWTManager,
+	authUC *auth.AuthUseCase,
+	demoSvc *demo.Service,
+	demoAppSvc *service.Service,
+) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
 
-	// Middleware chain: Recovery -> Logger -> CORS
 	router.Use(gin.Recovery())
 	router.Use(gin.Logger())
 	router.Use(CORSMiddleware(cfg.FrontendOrigins))
 
-	// Healthcheck endpoint
 	router.GET("/health", func(c *gin.Context) {
 		if err := svc.HealthCheck(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unhealthy", "error": err.Error()})
@@ -40,7 +46,6 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Authentication routes (public)
 	authHandler := NewAuthHandler(authUC)
 	authRoutes := router.Group("/api/v1/auth")
 	{
@@ -53,7 +58,6 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 		authRoutes.POST("/logout", authHandler.Logout)
 	}
 
-	// Protected routes (require JWT authentication)
 	protected := router.Group("/api/v1")
 	protected.Use(AuthMiddleware(jwt))
 	{
@@ -61,7 +65,6 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 		protected.PATCH("/me", authHandler.UpdateMe)
 		protected.POST("/me/password", authHandler.ChangePassword)
 
-		// Club management
 		clubHandler := NewClubHandler(svc)
 		protected.GET("/clubs", clubHandler.ListClubs)
 		protected.POST("/clubs", clubHandler.CreateClub)
@@ -69,32 +72,27 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 		protected.PATCH("/clubs/:clubId", clubHandler.UpdateClub)
 		protected.DELETE("/clubs/:clubId", clubHandler.CloseClub)
 
-		// Club membership
 		memberHandler := NewClubMemberHandler(svc)
 		protected.GET("/clubs/:clubId/members", memberHandler.ListMembers)
 		protected.POST("/clubs/:clubId/members", memberHandler.InviteMember)
 		protected.PATCH("/clubs/:clubId/members/:playerId", memberHandler.UpdateMember)
 		protected.DELETE("/clubs/:clubId/members/:playerId", memberHandler.RemoveMember)
 
-		// Membership requests
 		membershipHandler := NewMembershipRequestHandler(svc)
 		protected.GET("/clubs/:clubId/member-requests", membershipHandler.ListMemberRequests)
 		protected.POST("/clubs/:clubId/members/:playerId/approve", membershipHandler.ApproveMember)
 		protected.POST("/clubs/:clubId/members/:playerId/reject", membershipHandler.RejectMember)
 
-		// Club invitations
 		invitationHandler := NewClubInvitationHandler(svc)
 		protected.GET("/clubs/:clubId/invites", invitationHandler.ListInvites)
 		protected.POST("/clubs/:clubId/invites", invitationHandler.CreateInvite)
 
-		// Statistics
 		statsHandler := NewStatisticsHandler(svc)
 		protected.GET("/clubs/:clubId/statistics", statsHandler.GetClubStatistics)
 		protected.GET("/clubs/:clubId/statistics/members", statsHandler.GetClubMemberStatistics)
 		protected.GET("/players/:playerId/statistics", statsHandler.GetPlayerStatistics)
 		protected.GET("/players/:playerId/history", statsHandler.GetPlayerGameHistory)
 
-		// Games
 		gameHandler := NewGameHandler(svc)
 		protected.GET("/clubs/:clubId/games", gameHandler.ListGames)
 		protected.POST("/clubs/:clubId/games", gameHandler.CreateGame)
@@ -121,11 +119,81 @@ func NewServer(cfg *config.Config, svc *service.Service, jwt *auth.JWTManager, a
 		protected.GET("/games/:gameId/events", gameHandler.GetGameEvents)
 	}
 
-	// Webhook endpoint — registered by transport layer via RegisterWebhookHandler
+	registerDemoRoutes(router, demoSvc, demoAppSvc)
 
 	return &Server{
 		cfg:    cfg,
 		router: router,
+	}
+}
+
+func registerDemoRoutes(router *gin.Engine, demoSvc *demo.Service, demoAppSvc *service.Service) {
+	demoHandler := NewDemoHandler(demoSvc)
+	// Always registered: returns 503 DEMO_UNAVAILABLE when demo is disabled/unavailable.
+	router.POST("/api/v1/demo/sessions", demoHandler.CreateSession)
+
+	if demoSvc == nil || demoAppSvc == nil {
+		return
+	}
+
+	clubHandler := NewClubHandler(demoAppSvc)
+	memberHandler := NewClubMemberHandler(demoAppSvc)
+	membershipHandler := NewMembershipRequestHandler(demoAppSvc)
+	invitationHandler := NewClubInvitationHandler(demoAppSvc)
+	statsHandler := NewStatisticsHandler(demoAppSvc)
+	gameHandler := NewGameHandler(demoAppSvc)
+
+	demoAPI := router.Group("/api/v1/demo")
+	demoAPI.Use(DemoAuthMiddleware(demoSvc))
+	{
+		demoAPI.GET("/me", func(c *gin.Context) {
+			demoHandler.Me(c, demoAppSvc)
+		})
+
+		demoAPI.GET("/clubs", clubHandler.ListClubs)
+		demoAPI.GET("/clubs/:clubId", clubHandler.GetClub)
+		demoAPI.PATCH("/clubs/:clubId", clubHandler.UpdateClub)
+
+		demoAPI.GET("/clubs/:clubId/members", memberHandler.ListMembers)
+		demoAPI.POST("/clubs/:clubId/members", memberHandler.InviteMember)
+		demoAPI.PATCH("/clubs/:clubId/members/:playerId", memberHandler.UpdateMember)
+		demoAPI.DELETE("/clubs/:clubId/members/:playerId", memberHandler.RemoveMember)
+
+		demoAPI.GET("/clubs/:clubId/member-requests", membershipHandler.ListMemberRequests)
+		demoAPI.POST("/clubs/:clubId/members/:playerId/approve", membershipHandler.ApproveMember)
+		demoAPI.POST("/clubs/:clubId/members/:playerId/reject", membershipHandler.RejectMember)
+
+		demoAPI.GET("/clubs/:clubId/invites", invitationHandler.ListInvites)
+		demoAPI.POST("/clubs/:clubId/invites", invitationHandler.CreateInvite)
+
+		demoAPI.GET("/clubs/:clubId/statistics", statsHandler.GetClubStatistics)
+		demoAPI.GET("/clubs/:clubId/statistics/members", statsHandler.GetClubMemberStatistics)
+		demoAPI.GET("/players/:playerId/statistics", statsHandler.GetPlayerStatistics)
+		demoAPI.GET("/players/:playerId/history", statsHandler.GetPlayerGameHistory)
+
+		demoAPI.GET("/clubs/:clubId/games", gameHandler.ListGames)
+		demoAPI.POST("/clubs/:clubId/games", gameHandler.CreateGame)
+		demoAPI.GET("/games/:gameId", gameHandler.GetGame)
+		demoAPI.PATCH("/games/:gameId", gameHandler.UpdateGame)
+		demoAPI.POST("/games/:gameId/start", gameHandler.StartGame)
+		demoAPI.POST("/games/:gameId/finish", gameHandler.FinishGame)
+		demoAPI.POST("/games/:gameId/cancel", gameHandler.CancelGame)
+		demoAPI.PATCH("/games/:gameId/banker", gameHandler.UpdateBanker)
+		demoAPI.GET("/games/:gameId/participants", gameHandler.ListGameParticipants)
+		demoAPI.POST("/games/:gameId/participants", gameHandler.AddGameParticipant)
+		demoAPI.DELETE("/games/:gameId/participants/:playerId", gameHandler.RemoveGameParticipant)
+		demoAPI.POST("/games/:gameId/participants/me/accept", gameHandler.AcceptGameParticipation)
+		demoAPI.POST("/games/:gameId/participants/me/decline", gameHandler.DeclineGameParticipation)
+		demoAPI.POST("/games/:gameId/participants/:playerId/confirm", gameHandler.ConfirmGameParticipation)
+		demoAPI.POST("/games/:gameId/participants/:playerId/buy-in", gameHandler.RegisterBuyIn)
+		demoAPI.POST("/games/:gameId/participants/:playerId/rebuy", gameHandler.RegisterRebuy)
+		demoAPI.POST("/games/:gameId/participants/:playerId/rebuy/fix", gameHandler.FixRebuy)
+		demoAPI.POST("/games/:gameId/participants/:playerId/chips", gameHandler.SetChipsEnd)
+		demoAPI.POST("/games/:gameId/participants/me/stack", gameHandler.SetCurrentStack)
+		demoAPI.GET("/games/:gameId/results", gameHandler.GetGameResults)
+		demoAPI.POST("/games/:gameId/results/correct", gameHandler.CorrectGameResults)
+		demoAPI.GET("/games/:gameId/monitor", gameHandler.GetGameMonitor)
+		demoAPI.GET("/games/:gameId/events", gameHandler.GetGameEvents)
 	}
 }
 

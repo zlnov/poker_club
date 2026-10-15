@@ -232,3 +232,23 @@ type AuthTokens struct {
 	AccessToken  string
 	RefreshToken string
 }
+
+// DemoSession represents an opaque-token demo session stored in the demo database.
+// Only the SHA-256 hash of the token is persisted; the raw token is returned once.
+type DemoSession struct {
+	ID        int64
+	TokenHash string
+	ClubID    int64
+	PlayerID  int64
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+// DemoSessionResult is returned when a demo session is created.
+type DemoSessionResult struct {
+	AccessToken string
+	ClubID      int64
+	ExpiresAt   time.Time
+	PlayerID    int64
+	TgUserID    int64
+}

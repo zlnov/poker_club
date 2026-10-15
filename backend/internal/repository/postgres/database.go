@@ -24,41 +24,53 @@ type DB struct {
 	Pool *pgxpool.Pool
 }
 
-// New creates a new DB instance, runs migrations, and returns it.
+// New creates a new DB instance for the production database, runs migrations, and returns it.
 func New(ctx context.Context, cfg *config.Config) (*DB, error) {
-	dsn := buildDSN(cfg)
+	return connectAndMigrate(ctx, buildDSN(
+		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBSSLMode,
+	))
+}
 
+// NewDemo creates a new DB instance for the demo database, runs migrations, and returns it.
+func NewDemo(ctx context.Context, cfg *config.Config) (*DB, error) {
+	return connectAndMigrate(ctx, buildDSN(
+		cfg.DemoDBHost, cfg.DemoDBPort, cfg.DemoDBUser, cfg.DemoDBPassword, cfg.DemoDBName, cfg.DemoDBSSLMode,
+	))
+}
+
+func connectAndMigrate(ctx context.Context, dsn string) (*DB, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	// Verify connection
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if err := pool.Ping(ctx); err != nil {
+	if err := pool.Ping(pingCtx); err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	db := &DB{Pool: pool}
 
 	if err := db.runMigrations(); err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return db, nil
 }
 
-func buildDSN(cfg *config.Config) string {
+func buildDSN(host, port, user, password, dbName, sslMode string) string {
 	q := url.Values{}
-	q.Set("sslmode", cfg.DBSSLMode)
+	q.Set("sslmode", sslMode)
 
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?%s",
-		cfg.DBUser,
-		url.QueryEscape(cfg.DBPassword),
-		cfg.DBHost,
-		cfg.DBPort,
-		cfg.DBName,
+		user,
+		url.QueryEscape(password),
+		host,
+		port,
+		dbName,
 		q.Encode(),
 	)
 }
