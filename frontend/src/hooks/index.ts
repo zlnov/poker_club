@@ -80,4 +80,4 @@ export function useEnvironmentName(): EnvironmentConfig['envName'] {
   return env.envName
 }
 
-export { useLastClubId } from './useLastClubId'
+export { clearStoredLastClubId, useLastClubId } from './useLastClubId'

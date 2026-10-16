@@ -6,6 +6,15 @@ import { useCallback, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'poker-club:lastClubId'
 
+/** Drops the persisted club id. Used when leaving a demo session. */
+export function clearStoredLastClubId(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 function readStoredClubId(): number | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -46,11 +55,7 @@ export function useLastClubId() {
   }, [])
 
   const clearLastClubId = useCallback(() => {
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // ignore
-    }
+    clearStoredLastClubId()
     setLastClubIdState(null)
   }, [])
 

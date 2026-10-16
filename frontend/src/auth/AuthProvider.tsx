@@ -11,9 +11,12 @@ import { createApiClient, type TokenManager } from '../api'
 import {
   clearDemoSession,
   loadDemoSession,
+  loadRestorableDemoSession,
   saveDemoSession,
+  suspendDemoSession,
 } from '../demo'
 import { getEnvironment } from '../env'
+import { clearStoredLastClubId } from '../hooks/useLastClubId'
 import { ApiClientContext } from './ApiClientContext'
 import { AuthContext } from './AuthContext'
 import type {
@@ -251,12 +254,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [fetchCurrentUser, tokenManager])
 
+  const suspendActiveDemo = useCallback(() => {
+    if (loadDemoSession() || loadRestorableDemoSession()) {
+      clearStoredLastClubId()
+    }
+    suspendDemoSession()
+    tokenManager.clearTokens()
+    setUser(null)
+    setIsDemo(false)
+    setState('unauthenticated')
+  }, [tokenManager])
+
   const login = useCallback(
     async (credentials: LoginCredentials): Promise<void> => {
       setIsLoading(true)
       try {
-        clearDemoSession()
-        setIsDemo(false)
+        suspendActiveDemo()
         const response = await apiClient.post<{
           access_token: string
           refresh_token: string
@@ -276,13 +289,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false)
       }
     },
-    [apiClient, applyTokensAndLoadUser],
+    [apiClient, applyTokensAndLoadUser, suspendActiveDemo],
   )
 
   const loginWithTelegram = useCallback(
     async (initData: string): Promise<void> => {
       setIsLoading(true)
       try {
+        suspendActiveDemo()
         const response = await apiClient.post<{
           access_token: string
           refresh_token: string
@@ -299,7 +313,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false)
       }
     },
-    [apiClient, applyTokensAndLoadUser],
+    [apiClient, applyTokensAndLoadUser, suspendActiveDemo],
   )
 
   const loginWithTelegramWeb = useCallback(
@@ -309,6 +323,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     ): Promise<TelegramWebAuthResult> => {
       setIsLoading(true)
       try {
+        suspendActiveDemo()
         const response = await apiClient.post<{
           access_token?: string
           refresh_token?: string
@@ -343,13 +358,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false)
       }
     },
-    [apiClient, applyTokensAndLoadUser],
+    [apiClient, applyTokensAndLoadUser, suspendActiveDemo],
   )
 
   const completeTelegramRegistration = useCallback(
     async (input: CompleteTelegramRegistrationInput): Promise<void> => {
       setIsLoading(true)
       try {
+        suspendActiveDemo()
         const response = await apiClient.post<{
           access_token: string
           refresh_token: string
@@ -374,7 +390,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false)
       }
     },
-    [apiClient, applyTokensAndLoadUser],
+    [apiClient, applyTokensAndLoadUser, suspendActiveDemo],
   )
 
   const updateProfile = useCallback(
@@ -420,11 +436,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [apiClient, fetchCurrentUser],
   )
 
+  const resumeDemo = useCallback(
+    async (session: {
+      accessToken: string
+      clubId: number
+      expiresAt: string
+    }): Promise<number | null> => {
+      saveDemoSession({
+        accessToken: session.accessToken,
+        clubId: session.clubId,
+        expiresAt: session.expiresAt,
+      })
+      tokenManager.setTokens(session.accessToken, '')
+      const currentUser = await fetchCurrentUser()
+      if (!currentUser) {
+        clearDemoSession()
+        tokenManager.clearTokens()
+        setUser(null)
+        setIsDemo(false)
+        setState('unauthenticated')
+        return null
+      }
+      setUser(currentUser)
+      setIsDemo(true)
+      setState('authenticated')
+      return session.clubId
+    },
+    [fetchCurrentUser, tokenManager],
+  )
+
   const startDemo = useCallback(async (): Promise<number> => {
     setIsLoading(true)
     try {
-      clearDemoSession()
-      tokenManager.clearTokens()
+      const existing = loadRestorableDemoSession()
+      if (existing) {
+        const clubId = await resumeDemo(existing)
+        if (clubId) {
+          return clubId
+        }
+      }
 
       const response = await apiClient.post<{
         access_token: string
@@ -456,13 +506,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [apiClient, fetchCurrentUser, tokenManager])
+  }, [apiClient, fetchCurrentUser, resumeDemo, tokenManager])
 
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true)
     try {
       const demo = loadDemoSession()
-      if (!demo) {
+      if (demo) {
+        suspendDemoSession()
+        clearStoredLastClubId()
+      } else {
         const refreshToken = tokenManager.getRefreshToken()
         if (refreshToken) {
           await apiClient.post('/auth/logout', {
@@ -474,7 +527,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch {
       // Ignore logout errors
     } finally {
-      clearDemoSession()
       tokenManager.clearTokens()
       setUser(null)
       setIsDemo(false)
@@ -505,6 +557,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loginWithTelegram,
     loginWithTelegramWeb,
     completeTelegramRegistration,
+    pauseDemo: suspendActiveDemo,
     startDemo,
     updateProfile,
     changePassword,

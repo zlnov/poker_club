@@ -8,6 +8,7 @@
  * 07_AUTH.md section 8 (Session Expiration).
  */
 
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { LoadingState } from '../components'
@@ -45,18 +46,24 @@ export function ProtectedRoute() {
  * (e.g., login page). Redirects authenticated users to /clubs.
  */
 export function PublicRoute() {
-  const { state, isLoading } = useAuth()
+  const { state, isLoading, isDemo, pauseDemo } = useAuth()
+  const leavingDemo = state === 'authenticated' && isDemo
 
-  // Show loading while authentication is being checked
-  if (isLoading || state === 'loading') {
+  // Demo is not a real account. Pause it so login and registration
+  // hit the production API, but keep the club session for a later return.
+  useEffect(() => {
+    if (leavingDemo) {
+      pauseDemo()
+    }
+  }, [leavingDemo, pauseDemo])
+
+  if (isLoading || state === 'loading' || leavingDemo) {
     return <LoadingState />
   }
 
-  // Redirect to clubs if already authenticated
   if (state === 'authenticated') {
     return <Navigate to="/clubs" replace />
   }
 
-  // Render public content
   return <Outlet />
 }
