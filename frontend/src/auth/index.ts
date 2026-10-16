@@ -65,6 +65,8 @@ export interface AuthContextValue {
   loginWithTelegram: (initData: string) => Promise<void>
   loginWithTelegramWeb: (idToken: string, challengeToken: string) => Promise<TelegramWebAuthResult>
   completeTelegramRegistration: (input: CompleteTelegramRegistrationInput) => Promise<void>
+  /** Leave demo without deleting the saved club session. */
+  pauseDemo: () => void
   startDemo: () => Promise<number>
   updateProfile: (input: UpdateProfileInput) => Promise<void>
   changePassword: (input: ChangePasswordInput) => Promise<void>
@@ -82,6 +84,7 @@ export const AUTH_CONTEXT_PLACEHOLDER: AuthContextValue = {
   loginWithTelegram: async () => {},
   loginWithTelegramWeb: async () => ({ authenticated: false }),
   completeTelegramRegistration: async () => {},
+  pauseDemo: () => {},
   startDemo: async () => 0,
   updateProfile: async () => {},
   changePassword: async () => {},
