@@ -46,6 +46,33 @@ body {
   flex-direction: column;
 }
 
+/*
+ * Default icon color matches the Dashboard PULSE heading icon (#10b981).
+ * Icons with an explicit color prop keep it (stroke is not currentColor).
+ * Gray, white, and control-colored icons inherit from their parent.
+ */
+.tabler-icon {
+  color: #10b981;
+}
+
+.mantine-Button-section .tabler-icon,
+.mantine-Input-section .tabler-icon,
+.mantine-Alert-icon .tabler-icon,
+.mantine-Notification-icon .tabler-icon,
+.mantine-Badge-root .tabler-icon,
+.mantine-ActionIcon-root .tabler-icon,
+.mantine-ThemeIcon-root .tabler-icon,
+[style*='--mantine-color-dimmed'] .tabler-icon,
+[style*='--mantine-color-gray'] .tabler-icon,
+[style*='color: white'] .tabler-icon,
+[style*='color:white'] .tabler-icon,
+[style*='color: #fff'] .tabler-icon,
+[style*='color:#fff'] .tabler-icon,
+[style*='color: #ffffff'] .tabler-icon,
+[style*='color:#ffffff'] .tabler-icon {
+  color: inherit;
+}
+
 /* Focus styles — keyboard navigation (04_FE_SPEC.md section 34) */
 *:focus-visible {
   outline: 2px solid var(--mantine-color-violet-6);

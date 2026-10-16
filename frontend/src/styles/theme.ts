@@ -8,7 +8,11 @@
  * 04_FE_SPEC.md section 8 (Technology Stack — Mantine approved).
  */
 
-import type { MantineThemeOverride } from '@mantine/core'
+import type {
+  ButtonProps,
+  MantineTheme,
+  MantineThemeOverride,
+} from '@mantine/core'
 
 /**
  * Poker Club color palette.
@@ -195,13 +199,36 @@ export const pokerClubTheme: MantineThemeOverride = {
   },
   components: {
     Button: {
-      styles: {
-        root: {
-          fontWeight: 500,
-        },
-      },
       defaultProps: {
         radius: 'md',
+      },
+      vars: (theme: MantineTheme, props: ButtonProps) => {
+        const variant = props.variant ?? 'filled'
+        const color = props.color ?? theme.primaryColor
+        if (variant !== 'filled' || color !== 'violet') {
+          return { root: {} }
+        }
+        return {
+          root: {
+            '--button-bg': 'rgba(139, 92, 246, 0.22)',
+            '--button-hover': 'rgba(139, 92, 246, 0.32)',
+            '--button-color': 'var(--mantine-color-text)',
+            '--button-hover-color': 'var(--mantine-color-text)',
+            '--button-bd': '1px solid #8b5cf6',
+            '--button-radius': '10px',
+          },
+        }
+      },
+      styles: (theme: MantineTheme, props: ButtonProps) => {
+        const variant = props.variant ?? 'filled'
+        const color = props.color ?? theme.primaryColor
+        if (variant !== 'filled' || color !== 'violet') {
+          return { root: { fontWeight: 500 } }
+        }
+        return {
+          root: { fontWeight: 500 },
+          section: { color: '#8b5cf6' },
+        }
       },
     },
     ActionIcon: {

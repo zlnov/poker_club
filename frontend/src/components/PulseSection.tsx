@@ -14,14 +14,15 @@
  */
 
 import {
+  Box,
   Card,
   Group,
   Stack,
   Text,
   Title,
   Badge,
-  Button,
   SimpleGrid,
+  UnstyledButton,
 } from '@mantine/core'
 import {
   IconChessKing,
@@ -37,6 +38,7 @@ import type { GameSummary, GameParticipantSummary, GameType } from '../types'
 import { useGameParticipants } from '../features'
 import { formatDateShort } from '../utils'
 import { backgroundSurfaces } from '../styles'
+import { navAccent } from './navTheme'
 
 interface PulseSectionProps {
   /** Active game (if any). */
@@ -130,7 +132,7 @@ function getPlayerStatusText(
       return { text: 'Вы приглашены', color: 'yellow' }
     case 'accepted':
     case 'confirmed':
-      return { text: 'Вы участвуете', color: 'green' }
+      return { text: 'Вы участвуете', color: navAccent.color }
     case 'declined':
       return { text: 'Вы отказались', color: 'gray' }
     default:
@@ -203,16 +205,26 @@ function ActiveGameCard({
   if (!game) {
     return (
       <Card
-        padding="md"
+        padding="sm"
         radius="md"
         withBorder
         bg={backgroundSurfaces.card}
-        style={{ minHeight: 'auto' }}
+        style={{
+          minHeight: 'auto',
+          borderColor: navAccent.border,
+          opacity: 0.72,
+        }}
       >
-        <Group gap="xs">
-          <Text c="dimmed" size="sm">
-            ○
-          </Text>
+        <Group gap="sm">
+          <Box
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: navAccent.muted,
+              flexShrink: 0,
+            }}
+          />
           <Text size="sm" c="dimmed">
             Нет активных игр
           </Text>
@@ -236,12 +248,27 @@ function ActiveGameCard({
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderColor: navAccent.border,
+      }}
     >
       <Group justify="space-between" mb="sm">
         <Group gap="xs">
-          <Text c="green" size="sm" fw={500}>
-            ● ИГРА ИДЁТ
+          <Box
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: navAccent.color,
+              boxShadow: `0 0 0 3px ${navAccent.activeBg}`,
+              flexShrink: 0,
+            }}
+          />
+          <Text c={navAccent.color} size="sm" fw={600}>
+            ИГРА ИДЁТ
           </Text>
           {getGameTypeIcon(game.type)}
         </Group>
@@ -292,20 +319,30 @@ function ActiveGameCard({
           <Text size="sm" c="dimmed">
             Банк:
           </Text>
-          <Text size="lg" fw={700}>
+          <Text size="sm">
             {Math.round(bank)}
           </Text>
         </Group>
       </Stack>
 
       <Group justify="flex-end" mt="sm">
-        <Button
-          size="sm"
-          rightSection={<IconChevronRight size={16} />}
+        <UnstyledButton
           onClick={() => navigate(`/games/${game.id}`)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 14px',
+            borderRadius: 10,
+            border: '1px solid #8b5cf6',
+            background: 'rgba(139, 92, 246, 0.22)',
+            fontSize: 14,
+            fontWeight: 500,
+          }}
         >
           Перейти в игру
-        </Button>
+          <IconChevronRight size={16} color="#8b5cf6" />
+        </UnstyledButton>
       </Group>
     </Card>
   )
@@ -328,16 +365,26 @@ function UpcomingGameCard({
   if (!game) {
     return (
       <Card
-        padding="md"
+        padding="sm"
         radius="md"
         withBorder
         bg={backgroundSurfaces.card}
-        style={{ minHeight: 'auto' }}
+        style={{
+          minHeight: 'auto',
+          borderColor: navAccent.border,
+          opacity: 0.72,
+        }}
       >
-        <Group gap="xs">
-          <Text c="dimmed" size="sm">
-            ○
-          </Text>
+        <Group gap="sm">
+          <Box
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: navAccent.muted,
+              flexShrink: 0,
+            }}
+          />
           <Text size="sm" c="dimmed">
             Нет запланированных игр
           </Text>
@@ -354,12 +401,29 @@ function UpcomingGameCard({
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderColor: navAccent.border,
+      }}
     >
       <Group justify="space-between" mb="sm">
-        <Text size="sm" fw={500}>
-          БЛИЖАЙШАЯ ИГРА
-        </Text>
+        <Group gap="xs">
+          <Box
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: 'var(--mantine-color-yellow-5)',
+              boxShadow: '0 0 0 3px rgba(245, 158, 11, 0.2)',
+              flexShrink: 0,
+            }}
+          />
+          <Text size="sm" fw={600} c="yellow.5">
+            БЛИЖАЙШАЯ ИГРА
+          </Text>
+        </Group>
         <Badge color={getGameTypeBadgeColor(game.type)} variant="light">
           {getGameTypeLabel(game.type)}
         </Badge>
@@ -434,13 +498,23 @@ function UpcomingGameCard({
       </Card>
 
       <Group justify="flex-end" mt="sm">
-        <Button
-          size="sm"
-          rightSection={<IconChevronRight size={16} />}
+        <UnstyledButton
           onClick={() => navigate(`/games/${game.id}`)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 14px',
+            borderRadius: 10,
+            border: '1px solid #8b5cf6',
+            background: 'rgba(139, 92, 246, 0.22)',
+            fontSize: 14,
+            fontWeight: 500,
+          }}
         >
           Перейти в карточку
-        </Button>
+          <IconChevronRight size={16} color="#8b5cf6" />
+        </UnstyledButton>
       </Group>
     </Card>
   )
@@ -482,9 +556,10 @@ export function PulseSection({
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
+      style={{ borderColor: navAccent.border }}
     >
       <Group gap="xs" mb="md">
-        <IconClock size={20} />
+        <IconClock size={20} color={navAccent.color} />
         <Title order={4} mb={0}>
           PULSE
         </Title>

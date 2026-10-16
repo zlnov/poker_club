@@ -9,12 +9,12 @@
  * 04_FE_SPEC.md section 11 (Routing).
  */
 
-import { Button, Card, Group, Title } from '@mantine/core'
+import { Card, Group, Title, UnstyledButton } from '@mantine/core'
 import {
   IconChessKing,
   IconUsers,
-  IconEdit,
   IconChartBar,
+  IconChevronRight,
 } from '@tabler/icons-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
@@ -32,6 +32,7 @@ import { TopListSection } from '../components/TopListSection'
 import { ModerationSection } from '../components/ModerationSection'
 import { EventJournalSection } from '../components/EventJournalSection'
 import { backgroundSurfaces } from '../styles'
+import { navAccent } from '../components/navTheme'
 
 /**
  * Club dashboard page.
@@ -133,17 +134,6 @@ export function ClubDashboard() {
               ? 'You are an admin of this club'
               : 'Club member'
         }
-        action={
-          (isOwner || isAdmin) && (
-            <Button
-              leftSection={<IconEdit size={16} />}
-              variant="subtle"
-              onClick={() => navigate(`/clubs/${club.id}/settings`)}
-            >
-              Edit Settings
-            </Button>
-          )
-        }
       />
 
       {/* PULSE Section */}
@@ -169,29 +159,55 @@ export function ClubDashboard() {
         radius="md"
         withBorder
         bg={backgroundSurfaces.card}
+        style={{ borderColor: navAccent.border }}
       >
         <Title order={4} mb="md">
           Quick Actions
         </Title>
-        <Group gap="sm">
-          <Button
-            leftSection={<IconChessKing size={16} />}
-            onClick={() => navigate(`/clubs/${club.id}/games`)}
-          >
-            View Games
-          </Button>
-          <Button
-            leftSection={<IconUsers size={16} />}
-            onClick={() => navigate(`/clubs/${club.id}/members`)}
-          >
-            Manage Members
-          </Button>
-          <Button
-            leftSection={<IconChartBar size={16} />}
-            onClick={() => navigate(`/clubs/${club.id}/statistics`)}
-          >
-            View Statistics
-          </Button>
+        <Group gap="sm" grow preventGrowOverflow={false}>
+          {(
+            [
+              {
+                label: 'View Games',
+                icon: IconChessKing,
+                to: `/clubs/${club.id}/games`,
+              },
+              {
+                label: 'Manage Members',
+                icon: IconUsers,
+                to: `/clubs/${club.id}/members`,
+              },
+              {
+                label: 'View Statistics',
+                icon: IconChartBar,
+                to: `/clubs/${club.id}/statistics`,
+              },
+            ] as const
+          ).map((action) => (
+            <UnstyledButton
+              key={action.label}
+              onClick={() => navigate(action.to)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: `1px solid ${navAccent.color}`,
+                background: 'rgba(16, 185, 129, 0.06)',
+                minWidth: 140,
+              }}
+            >
+              <Group gap="sm" wrap="nowrap">
+                <action.icon size={18} color={navAccent.color} />
+                <span style={{ fontSize: 14, fontWeight: 500 }}>
+                  {action.label}
+                </span>
+              </Group>
+              <IconChevronRight size={16} color={navAccent.color} />
+            </UnstyledButton>
+          ))}
         </Group>
       </Card>
     </PageContainer>
