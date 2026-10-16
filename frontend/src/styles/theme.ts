@@ -8,7 +8,11 @@
  * 04_FE_SPEC.md section 8 (Technology Stack — Mantine approved).
  */
 
-import type { MantineThemeOverride } from '@mantine/core'
+import type {
+  ButtonProps,
+  MantineTheme,
+  MantineThemeOverride,
+} from '@mantine/core'
 
 /**
  * Poker Club color palette.
@@ -198,9 +202,9 @@ export const pokerClubTheme: MantineThemeOverride = {
       defaultProps: {
         radius: 'md',
       },
-      vars: (_theme, props) => {
+      vars: (theme: MantineTheme, props: ButtonProps) => {
         const variant = props.variant ?? 'filled'
-        const color = props.color ?? _theme.primaryColor
+        const color = props.color ?? theme.primaryColor
         if (variant !== 'filled' || color !== 'violet') {
           return { root: {} }
         }
@@ -215,9 +219,9 @@ export const pokerClubTheme: MantineThemeOverride = {
           },
         }
       },
-      styles: (_theme, props) => {
+      styles: (theme: MantineTheme, props: ButtonProps) => {
         const variant = props.variant ?? 'filled'
-        const color = props.color ?? _theme.primaryColor
+        const color = props.color ?? theme.primaryColor
         if (variant !== 'filled' || color !== 'violet') {
           return { root: { fontWeight: 500 } }
         }
