@@ -26,6 +26,7 @@ import { IconChartBar } from '@tabler/icons-react'
 import { useMediaQuery } from '@mantine/hooks'
 import { useClubMemberStatistics } from '../features'
 import { backgroundSurfaces } from '../styles'
+import { navAccent } from './navTheme'
 
 interface TopListSectionProps {
   /** Club ID. */
@@ -88,11 +89,16 @@ function TopProfitCard({
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderColor: navAccent.border,
+      }}
     >
-      <Title order={5} mb="sm">
-        <Text size="s">ТОП-3 ПО ПРИБЫЛИ</Text>
-      </Title>
+      <Text size="sm" fw={500} mb="sm">
+        ТОП-3 ПО ПРИБЫЛИ
+      </Text>
 
       {topPlayers.length === 0 ? (
         <Stack
@@ -108,10 +114,12 @@ function TopProfitCard({
           style={{ flex: 1 }}
           mt="auto"
           styles={{
-            td: { padding: '0.1rem' },
+            td: { padding: '0.35rem 0.25rem' },
             th: {
               fontSize: 'var(--mantine-font-size-xs)',
-              color: 'var(--mantine-color-dimmed)',
+              color: 'rgba(255,255,255,0.55)',
+              fontWeight: 600,
+              borderBottom: `1px solid ${navAccent.border}`,
             },
           }}
         >
@@ -132,7 +140,9 @@ function TopProfitCard({
                   </Text>
                 </Table.Td>
                 <Table.Td>
-                  <Text size="xs">@{formatPlayerName(member.playerName)}</Text>
+                  <Text size="xs" fw={500}>
+                    @{formatPlayerName(member.playerName)}
+                  </Text>
                 </Table.Td>
                 <Table.Td ta="center">
                   <Text size="xs">{member.games}</Text>
@@ -140,8 +150,8 @@ function TopProfitCard({
                 <Table.Td ta="center">
                   <Text
                     size="xs"
-                    fw={600}
-                    c={member.profit >= 0 ? 'green' : 'red'}
+                    fw={700}
+                    c={member.profit >= 0 ? navAccent.color : 'red'}
                   >
                     {formatProfit(member.profit)}
                   </Text>
@@ -176,11 +186,16 @@ function TopRoiCard({
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderColor: navAccent.border,
+      }}
     >
-      <Title order={5} mb="xs">
-        <Text size="s">ТОП-3 ПО ROI</Text>
-      </Title>
+      <Text size="sm" fw={500} mb="xs">
+        ТОП-3 ПО ROI
+      </Text>
       <Text size="xs" c="dimmed" mb="sm">
         (минимум 5 игр)
       </Text>
@@ -199,10 +214,12 @@ function TopRoiCard({
           style={{ flex: 1 }}
           mt="auto"
           styles={{
-            td: { padding: '0.1rem' },
+            td: { padding: '0.35rem 0.25rem' },
             th: {
               fontSize: 'var(--mantine-font-size-xs)',
-              color: 'var(--mantine-color-dimmed)',
+              color: 'rgba(255,255,255,0.55)',
+              fontWeight: 600,
+              borderBottom: `1px solid ${navAccent.border}`,
             },
           }}
         >
@@ -223,7 +240,9 @@ function TopRoiCard({
                   </Text>
                 </Table.Td>
                 <Table.Td>
-                  <Text size="xs">@{formatPlayerName(member.playerName)}</Text>
+                  <Text size="xs" fw={500}>
+                    @{formatPlayerName(member.playerName)}
+                  </Text>
                 </Table.Td>
                 <Table.Td ta="center">
                   <Text size="xs">{member.games}</Text>
@@ -231,8 +250,8 @@ function TopRoiCard({
                 <Table.Td ta="center">
                   <Text
                     size="xs"
-                    fw={600}
-                    c={member.roi >= 0 ? 'green' : 'red'}
+                    fw={700}
+                    c={member.roi >= 0 ? navAccent.color : 'red'}
                   >
                     {formatRoi(member.roi)}
                   </Text>
@@ -267,9 +286,10 @@ export function TopListSection({ clubId }: TopListSectionProps) {
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
+      style={{ borderColor: navAccent.border }}
     >
       <Group gap="xs" mb="md">
-        <IconChartBar size={20} />
+        <IconChartBar size={20} color={navAccent.color} />
         <Title order={4} mb={0}>
           TOP LIST
         </Title>

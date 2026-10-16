@@ -1,137 +1,230 @@
 /**
- * Navigation component for the Poker Club Frontend.
+ * Sidebar / drawer navigation for the Poker Club app shell.
  *
- * Provides sidebar navigation between the main sections of the application.
- *
- * Navigation structure from 05_FE_UX.md section 4:
- * - Clubs (list)
- * - Club (dashboard, games, members, statistics, settings)
- * - Profile
- *
- * See 05_FE_UX.md section 6 (Club Navigation) and
- * 04_FE_SPEC.md section 11 (Routing).
+ * Sections:
+ * - Brand + CURRENT CLUB switcher
+ * - NAVIGATION (Dashboard, Games, Members, Statistics)
+ * - Profile footer (desktop / drawer bottom)
  */
 
 import {
-  NavLink as MantineNavLink,
-  ScrollArea,
+  Box,
+  Group,
+  Image,
   Stack,
-  // ColorScheme switcher - temporarily disabled, Dark mode is default
-  // useMantineColorScheme,
+  Text,
+  UnstyledButton,
 } from '@mantine/core'
 import {
-  IconHome,
-  IconUsers,
   IconChartBar,
-  IconSettings,
   IconChessKing,
-  IconClubs,
+  IconChevronRight,
+  IconHome,
+  IconUser,
+  IconUsers,
 } from '@tabler/icons-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-// ColorScheme switcher - temporarily disabled, Dark mode is default
-// import { ThemeToggle } from './ThemeToggle'
+import { useAuth } from '../auth'
+import { useLastClubId } from '../hooks/useLastClubId'
+import { ClubSwitcher } from './ClubSwitcher'
+import { navAccent } from './navTheme'
 
-/** Navigation item definition. */
 interface NavItem {
   label: string
-  href: string
-  icon: React.ComponentType<{ size?: number; stroke?: number }>
+  path: string
+  icon: React.ComponentType<{ size?: number; stroke?: number; color?: string }>
   exact?: boolean
 }
 
-/** Club-level navigation items (shown when inside a club context). */
 const clubNavItems: NavItem[] = [
-  { label: 'Dashboard', href: '', icon: IconHome, exact: true },
-  { label: 'Games', href: 'games', icon: IconChessKing },
-  { label: 'Members', href: 'members', icon: IconUsers },
-  { label: 'Statistics', href: 'statistics', icon: IconChartBar },
-  { label: 'Settings', href: 'settings', icon: IconSettings },
+  { label: 'Dashboard', path: '', icon: IconHome, exact: true },
+  { label: 'Games', path: 'games', icon: IconChessKing },
+  { label: 'Members', path: 'members', icon: IconUsers },
+  { label: 'Statistics', path: 'statistics', icon: IconChartBar },
 ]
 
-/** Top-level navigation items (shown outside club context). */
-const topNavItems: NavItem[] = [
-  { label: 'Clubs', href: '/clubs', icon: IconClubs },
-  { label: 'Profile', href: '/profile', icon: IconUsers },
-]
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text
+      size="xs"
+      fw={600}
+      mb={8}
+      style={{ color: navAccent.label }}
+    >
+      {children}
+    </Text>
+  )
+}
 
 /**
- * Navigation component.
- *
- * Renders top-level navigation (Clubs, Profile) when not in a club context,
- * or club-level navigation (Dashboard, Games, Members, Statistics, Settings)
- * when inside a club context.
- *
- * @param onNavigate - Optional callback invoked after a navigation link is clicked.
- *                     Used by mobile Drawer to close after navigation.
+ * @param onNavigate - Optional callback after a link click (closes mobile drawer).
+ * @param showBrand - Show logo + Poker Club title (true in desktop sidebar / drawer).
  */
-export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+export function Navigation({
+  onNavigate,
+  showBrand = true,
+}: {
+  onNavigate?: () => void
+  showBrand?: boolean
+}) {
   const location = useLocation()
   const params = useParams()
-  // ColorScheme switcher - temporarily disabled, Dark mode is default
-  // const { colorScheme } = useMantineColorScheme()
-  // const theme = useMantineTheme()
+  const { user } = useAuth()
+  const { lastClubId } = useLastClubId()
 
-  const clubId = params.clubId
-  const showClubNav = !!clubId
+  const routeClubId = params.clubId
+    ? Number.parseInt(params.clubId, 10)
+    : null
+  const effectiveClubId =
+    routeClubId && Number.isFinite(routeClubId) ? routeClubId : lastClubId
 
-  const isActive = (href: string, exact = false): boolean => {
-    if (exact) {
-      return location.pathname === href
+  const displayName =
+    user?.nickname ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(' ') ||
+    'Profile'
+  const initial = (displayName.charAt(0) || 'P').toUpperCase()
+
+  const isNavActive = (item: NavItem): boolean => {
+    if (!effectiveClubId) return false
+    const base = `/clubs/${effectiveClubId}`
+    const full = item.path ? `${base}/${item.path}` : base
+    if (item.exact) {
+      return location.pathname === full || location.pathname === `${full}/`
     }
-    return location.pathname.startsWith(href)
+    return location.pathname.startsWith(full)
   }
 
-  const renderNavItem = (item: NavItem, prefix = '') => {
-    const fullHref = `${prefix}${item.href}`
-    const active = isActive(fullHref, item.exact)
-
-    return (
-      <MantineNavLink
-        key={fullHref}
-        component={Link}
-        to={fullHref}
-        label={item.label}
-        leftSection={<item.icon size={18} stroke={active ? 1.5 : 1} />}
-        active={active}
-        variant={active ? 'light' : 'subtle'}
-        onClick={onNavigate}
-      />
-    )
+  const hrefFor = (item: NavItem): string => {
+    if (!effectiveClubId) return '/clubs'
+    const base = `/clubs/${effectiveClubId}`
+    return item.path ? `${base}/${item.path}` : base
   }
 
   return (
-    <ScrollArea style={{ height: 'calc(100vh - 64px)' }}>
-      <Stack gap={4} p="md" pt="xl">
-        {showClubNav ? (
-          <>
-            {clubNavItems.map((item) =>
-              renderNavItem(item, `/clubs/${clubId}/`),
-            )}
-          </>
-        ) : (
-          <>{topNavItems.map((item) => renderNavItem(item))}</>
+    <Box
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}
+    >
+      <Box style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
+        {showBrand && (
+          <Group gap="sm" mb="lg" wrap="nowrap">
+            <Image
+              src="/landing/logo/logo.png"
+              alt="Poker Club"
+              w={36}
+              h={36}
+              fit="contain"
+            />
+            <Stack gap={0}>
+              <Text fw={600} size="md" lh={1.2}>
+                Poker Club
+              </Text>
+              <Text size="xs" style={{ color: navAccent.label }}>
+                Club management
+              </Text>
+            </Stack>
+          </Group>
         )}
 
-        {/* ColorScheme switcher - temporarily disabled, Dark mode is default */}
-        {/* Theme toggle at the bottom */}
-        {/*
-        <Stack
-          gap="xs"
-          pt="lg"
-          style={{ borderTop: `1px solid ${theme.colors.gray[2]}` }}
+        <Box mb="lg">
+          <SectionLabel>Current Club</SectionLabel>
+          <ClubSwitcher onNavigate={onNavigate} />
+        </Box>
+
+        <Box>
+          <SectionLabel>Navigation</SectionLabel>
+          <Stack gap={4}>
+            {clubNavItems.map((item) => {
+              const active = isNavActive(item)
+              const Icon = item.icon
+              return (
+                <UnstyledButton
+                  key={item.label}
+                  component={Link}
+                  to={hrefFor(item)}
+                  onClick={onNavigate}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '9px 12px',
+                    borderRadius: 10,
+                    background: active ? navAccent.activeBg : 'transparent',
+                    borderLeft: active
+                      ? `3px solid ${navAccent.color}`
+                      : '3px solid transparent',
+                    color: active ? '#fff' : 'rgba(255,255,255,0.78)',
+                    transition: 'background 0.15s ease',
+                  }}
+                >
+                  <Icon
+                    size={18}
+                    stroke={active ? 1.75 : 1.4}
+                    color={active ? navAccent.color : undefined}
+                  />
+                  <Text size="sm" fw={active ? 600 : 500}>
+                    {item.label}
+                  </Text>
+                </UnstyledButton>
+              )
+            })}
+          </Stack>
+        </Box>
+      </Box>
+
+      <Box
+        style={{
+          borderTop: `1px solid ${navAccent.border}`,
+          padding: '12px 14px',
+        }}
+      >
+        <UnstyledButton
+          component={Link}
+          to="/profile"
+          onClick={onNavigate}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 10px',
+            borderRadius: 10,
+          }}
         >
-          <Text size="xs" c="dimmed" fw={500}>
-            Appearance
-          </Text>
-          <Group gap="xs">
-            <ThemeToggle size="sm" />
-            <Text size="sm" c="dimmed">
-              {colorScheme === 'dark' ? 'Dark mode' : 'Light mode'}
+          <Box
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: navAccent.activeBg,
+              color: navAccent.color,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 600,
+              flexShrink: 0,
+            }}
+          >
+            {user ? initial : <IconUser size={18} />}
+          </Box>
+          <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+            <Text size="sm" fw={600} truncate>
+              {displayName}
             </Text>
-          </Group>
-        </Stack>
-        */}
-      </Stack>
-    </ScrollArea>
+            <Text size="xs" style={{ color: navAccent.label }}>
+              Profile
+            </Text>
+          </Stack>
+          <IconChevronRight
+            size={16}
+            style={{ opacity: 0.5, color: 'inherit' }}
+          />
+        </UnstyledButton>
+      </Box>
+    </Box>
   )
 }

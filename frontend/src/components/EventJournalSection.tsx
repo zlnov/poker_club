@@ -25,7 +25,7 @@ import {
   ScrollArea,
   Button,
 } from '@mantine/core'
-import { IconAlertTriangle } from '@tabler/icons-react'
+import { IconNotebook } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMediaQuery } from '@mantine/hooks'
@@ -39,6 +39,7 @@ import type { GameParticipantSummary } from '../types'
 import { useApiClient } from '../hooks'
 import { useQueries } from '@tanstack/react-query'
 import { backgroundSurfaces } from '../styles'
+import { navAccent } from './navTheme'
 
 interface EventJournalSectionProps {
   /** Club ID. */
@@ -262,17 +263,23 @@ export function EventJournalSection({ clubId }: EventJournalSectionProps) {
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
+      style={{ borderColor: navAccent.border }}
     >
-      <Group gap="xs" mb="md">
-        <IconAlertTriangle size={20} />
-        <Title order={4} mb={0}>
-          ЖУРНАЛ СОБЫТИЙ
-        </Title>
+      <Group gap="xs" mb="md" justify="space-between">
+        <Group gap="xs">
+          <IconNotebook size={20} color={navAccent.color} />
+          <Title order={4} mb={0}>
+            ЖУРНАЛ СОБЫТИЙ
+          </Title>
+        </Group>
         {hasMore && !isMobile && (
           <Text
             size="sm"
-            c="blue"
-            style={{ cursor: 'pointer', textDecoration: 'underline' }}
+            fw={600}
+            style={{
+              cursor: 'pointer',
+              color: navAccent.color,
+            }}
             onClick={() => setIsModalOpen(true)}
           >
             Развернуть →
@@ -297,10 +304,12 @@ export function EventJournalSection({ clubId }: EventJournalSectionProps) {
         <Table
           variant="compact"
           styles={{
-            td: { padding: '0.1rem' },
+            td: { padding: '0.4rem 0.25rem' },
             th: {
               fontSize: 'var(--mantine-font-size-xs)',
-              color: 'var(--mantine-color-dimmed)',
+              color: 'rgba(255,255,255,0.55)',
+              fontWeight: 600,
+              borderBottom: `1px solid ${navAccent.border}`,
             },
           }}
         >
@@ -352,7 +361,17 @@ export function EventJournalSection({ clubId }: EventJournalSectionProps) {
         </Table>
       ) : (
         // Web: full table with all columns (matching ClubMemberStatsTable style)
-        <Table variant="striped">
+        <Table
+          variant="striped"
+          styles={{
+            th: {
+              color: 'rgba(255,255,255,0.55)',
+              fontWeight: 600,
+              borderBottom: `1px solid ${navAccent.border}`,
+            },
+            td: { paddingTop: 10, paddingBottom: 10 },
+          }}
+        >
           <Table.Thead>
             <Table.Tr>
               <Table.Th ta="center">Game</Table.Th>

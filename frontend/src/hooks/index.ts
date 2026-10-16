@@ -79,3 +79,5 @@ export function useEnvironmentName(): EnvironmentConfig['envName'] {
   const env = useEnvironment()
   return env.envName
 }
+
+export { useLastClubId } from './useLastClubId'

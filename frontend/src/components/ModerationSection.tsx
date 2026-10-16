@@ -18,6 +18,7 @@
  */
 
 import {
+  Box,
   Card,
   Group,
   Stack,
@@ -27,8 +28,16 @@ import {
   Button,
   Table,
   Grid,
+  UnstyledButton,
 } from '@mantine/core'
-import { IconAlertTriangle, IconChevronRight } from '@tabler/icons-react'
+import {
+  IconAlertTriangle,
+  IconChevronRight,
+  IconUserPlus,
+  IconUsersPlus,
+  IconBan,
+  IconUpload,
+} from '@tabler/icons-react'
 import { useNavigate } from 'react-router-dom'
 import { useMediaQuery } from '@mantine/hooks'
 import { useQueries } from '@tanstack/react-query'
@@ -47,6 +56,18 @@ import type {
 } from '../types'
 import { formatDateShort } from '../utils'
 import { backgroundSurfaces } from '../styles'
+import { navAccent } from './navTheme'
+
+function moderationCardStyle(active: boolean): React.CSSProperties {
+  return {
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    borderColor: active ? 'rgba(16, 185, 129, 0.35)' : navAccent.border,
+    opacity: active ? 1 : 0.62,
+    transition: 'opacity 0.15s ease, border-color 0.15s ease',
+  }
+}
 
 interface ModerationSectionProps {
   /** Club ID. */
@@ -122,27 +143,52 @@ function PendingConfirmationsCard({
     { label: 'Непринятые приглашения в клуб', count: unacceptedClubInvites },
   ].filter((c) => c.count > 0)
 
+  const totalPending = counters.reduce((sum, c) => sum + c.count, 0)
+  const active = totalPending > 0
+
   return (
     <Card
       padding="md"
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={moderationCardStyle(active)}
     >
-      <Title order={5} mb="sm">
-        <Text size="x">ОЖИДАЮТ ПОДТВЕРЖДЕНИЯ</Text>
-      </Title>
+      <Group gap="sm" mb="sm" wrap="nowrap" justify="space-between">
+        <Group gap="sm" wrap="nowrap">
+          <Box
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: navAccent.activeBg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <IconUserPlus size={18} color={navAccent.color} />
+          </Box>
+          <Stack gap={0}>
+            <Text size="sm" fw={500}>
+              ОЖИДАЮТ ПОДТВЕРЖДЕНИЯ
+            </Text>
+            <Text size="xs" c="dimmed">
+              {active
+                ? `${totalPending} ожидающих действий`
+                : 'Нет ожидающих действий'}
+            </Text>
+          </Stack>
+        </Group>
+        {active && (
+          <Badge color="orange" variant="light">
+            {totalPending}
+          </Badge>
+        )}
+      </Group>
 
-      {counters.length === 0 ? (
-        <Stack
-          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Text size="sm" c="dimmed" ta="center">
-            Нет ожидающих действий
-          </Text>
-        </Stack>
-      ) : (
+      {active && (
         <Stack gap={0} style={{ flex: 1, justifyContent: 'center' }}>
           {counters.map((counter, index) => (
             <Group
@@ -152,7 +198,7 @@ function PendingConfirmationsCard({
                 padding: '8px 0',
                 borderBottom:
                   index < counters.length - 1
-                    ? '1px solid var(--mantine-color-gray-3)'
+                    ? `1px solid ${navAccent.border}`
                     : 'none',
               }}
             >
@@ -187,23 +233,32 @@ function ActiveGameCard({
         radius="md"
         withBorder
         bg={backgroundSurfaces.card}
-        style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+        style={moderationCardStyle(false)}
       >
-        <Title order={5} mb="sm">
-          <Text size="x">ИГРА ТРЕБУЕТ ЗАВЕРШЕНИЯ</Text>
-        </Title>
-        <Stack
-          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Group gap="xs">
-            <Text c="dimmed" size="sm">
-              ○
+        <Group gap="sm" wrap="nowrap">
+          <Box
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.04)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <IconBan size={18} color={navAccent.muted} />
+          </Box>
+          <Stack gap={0}>
+            <Text size="sm" fw={500}>
+              ИГРА ТРЕБУЕТ ЗАВЕРШЕНИЯ
             </Text>
-            <Text size="sm" c="dimmed">
+            <Text size="xs" c="dimmed">
               Нет активных игр
             </Text>
-          </Group>
-        </Stack>
+          </Stack>
+        </Group>
       </Card>
     )
   }
@@ -212,47 +267,60 @@ function ActiveGameCard({
     participants?.filter((p) => p.status === 'confirmed').length ?? 0
 
   return (
-    <Card
-      padding="md"
-      radius="md"
-      withBorder
-      bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+    <UnstyledButton
+      onClick={() => navigate(`/games/${activeGame.id}`)}
+      style={{ display: 'block', width: '100%', height: '100%' }}
     >
-      <Title order={5} mb="sm">
-        ИГРА ТРЕБУЕТ ЗАВЕРШЕНИЯ
-      </Title>
-
-      <Stack gap="xs" style={{ flex: 1 }}>
-        <Group gap="xs">
-          <Text c="orange" size="lg">
-            ⚠
-          </Text>
-          <Text size="sm">Есть незавершённая игра</Text>
+      <Card
+        padding="md"
+        radius="md"
+        withBorder
+        bg={backgroundSurfaces.card}
+        style={moderationCardStyle(true)}
+      >
+        <Group gap="sm" mb="sm" wrap="nowrap" justify="space-between">
+          <Group gap="sm" wrap="nowrap">
+            <Box
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: 'rgba(245, 158, 11, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <IconAlertTriangle size={18} color="var(--mantine-color-orange-5)" />
+            </Box>
+            <Stack gap={0}>
+              <Text size="sm" fw={500}>
+                ИГРА ТРЕБУЕТ ЗАВЕРШЕНИЯ
+              </Text>
+              <Text size="xs" c="dimmed">
+                Есть незавершённая игра
+              </Text>
+            </Stack>
+          </Group>
+          <IconChevronRight size={18} color={navAccent.color} />
         </Group>
 
-        <Text size="xs" c="dimmed">
-          ID: #{activeGame.id} ·{' '}
-          {activeGame.type === 'tournament' ? 'Tournament' : 'Cash'} · старт{' '}
-          {formatDateShort(activeGame.startTime)},{' '}
-          {formatTimeOnly(activeGame.startTime)}
-        </Text>
+        <Stack gap="xs" style={{ flex: 1 }}>
+          <Text size="xs" c="dimmed">
+            ID: #{activeGame.id} ·{' '}
+            {activeGame.type === 'tournament' ? 'Tournament' : 'Cash'} · старт{' '}
+            {formatDateShort(activeGame.startTime)},{' '}
+            {formatTimeOnly(activeGame.startTime)}
+          </Text>
 
-        <Text size="xs" c="dimmed">
-          Банкир: {activeGame.bankerName || '—'} · участников: {confirmedCount}
-        </Text>
-      </Stack>
-
-      <Group justify="flex-end" mt="sm">
-        <Button
-          size="sm"
-          rightSection={<IconChevronRight size={16} />}
-          onClick={() => navigate(`/games/${activeGame.id}`)}
-        >
-          Перейти в игру
-        </Button>
-      </Group>
-    </Card>
+          <Text size="xs" c="dimmed">
+            Банкир: {activeGame.bankerName || '—'} · участников:{' '}
+            {confirmedCount}
+          </Text>
+        </Stack>
+      </Card>
+    </UnstyledButton>
   )
 }
 
@@ -294,27 +362,59 @@ function GameParticipationRequestsCard({
   const displayRequests = sortedRequests.slice(0, 5)
   const hasMore = sortedRequests.length > 5
 
+  const active = displayRequests.length > 0
+
   return (
     <Card
       padding="md"
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={moderationCardStyle(active)}
     >
-      <Title order={5} mb="sm">
-        <Text size="x">ЗАЯВКИ НА УЧАСТИЕ В ИГРАХ</Text>
-      </Title>
+      <UnstyledButton
+        onClick={() => {
+          if (active) navigate(`/clubs/${clubId}/games`)
+        }}
+        disabled={!active}
+        style={{
+          display: 'block',
+          width: '100%',
+          cursor: active ? 'pointer' : 'default',
+        }}
+      >
+        <Group gap="sm" mb="sm" wrap="nowrap" justify="space-between">
+          <Group gap="sm" wrap="nowrap">
+            <Box
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: navAccent.activeBg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <IconUpload size={18} color={navAccent.color} />
+            </Box>
+            <Stack gap={0} style={{ textAlign: 'left' }}>
+              <Text size="sm" fw={500}>
+                ЗАЯВКИ НА УЧАСТИЕ В ИГРАХ
+              </Text>
+              <Text size="xs" c="dimmed">
+                {active
+                  ? `${sortedRequests.length} ожидающих`
+                  : 'Нет активных заявок'}
+              </Text>
+            </Stack>
+          </Group>
+          {active && <IconChevronRight size={18} color={navAccent.color} />}
+        </Group>
+      </UnstyledButton>
 
-      {displayRequests.length === 0 ? (
-        <Stack
-          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Text size="sm" c="dimmed" ta="center">
-            Нет активных заявок
-          </Text>
-        </Stack>
-      ) : (
+      {displayRequests.length === 0 ? null : (
         <>
           <Table
             variant="compact"
@@ -416,27 +516,59 @@ function ClubMembershipRequestsCard({
   const displayRequests = sortedRequests.slice(0, 5)
   const hasMore = sortedRequests.length > 5
 
+  const active = displayRequests.length > 0
+
   return (
     <Card
       padding="md"
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={moderationCardStyle(active)}
     >
-      <Title order={5} mb="sm">
-        <Text size="x">ЗАЯВКИ НА ВСТУПЛЕНИЕ В КЛУБ</Text>
-      </Title>
+      <UnstyledButton
+        onClick={() => {
+          if (active) navigate(`/clubs/${clubId}/members`)
+        }}
+        disabled={!active}
+        style={{
+          display: 'block',
+          width: '100%',
+          cursor: active ? 'pointer' : 'default',
+        }}
+      >
+        <Group gap="sm" mb="sm" wrap="nowrap" justify="space-between">
+          <Group gap="sm" wrap="nowrap">
+            <Box
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: navAccent.activeBg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <IconUsersPlus size={18} color={navAccent.color} />
+            </Box>
+            <Stack gap={0} style={{ textAlign: 'left' }}>
+              <Text size="sm" fw={500}>
+                ЗАЯВКИ НА ВСТУПЛЕНИЕ В КЛУБ
+              </Text>
+              <Text size="xs" c="dimmed">
+                {active
+                  ? `${sortedRequests.length} ожидающих`
+                  : 'Нет активных заявок'}
+              </Text>
+            </Stack>
+          </Group>
+          {active && <IconChevronRight size={18} color={navAccent.color} />}
+        </Group>
+      </UnstyledButton>
 
-      {displayRequests.length === 0 ? (
-        <Stack
-          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Text size="sm" c="dimmed" ta="center">
-            Нет активных заявок
-          </Text>
-        </Stack>
-      ) : (
+      {displayRequests.length === 0 ? null : (
         <>
           <Table
             variant="unstyled"
@@ -565,9 +697,10 @@ export function ModerationSection({ clubId }: ModerationSectionProps) {
       radius="md"
       withBorder
       bg={backgroundSurfaces.card}
+      style={{ borderColor: navAccent.border }}
     >
       <Group gap="xs" mb="md">
-        <IconAlertTriangle size={20} />
+        <IconAlertTriangle size={20} color={navAccent.color} />
         <Title order={4} mb={0}>
           MODERATION
         </Title>

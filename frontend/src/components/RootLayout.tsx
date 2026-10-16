@@ -1,15 +1,9 @@
 /**
  * Root layout component for the application.
  *
- * Provides the application shell with:
- * - Mantine AppShell (header + sidebar navigation)
- * - Telegram environment detection
- * - Theme application (Telegram theme or default)
- * - Safe area handling for Telegram Mini App
- * - Background video layer (persistent across navigation)
- *
- * See 04_FE_SPEC.md section 6 (Telegram Integration Layer) and
- * section 7 (Telegram and Standard Web compatibility).
+ * Desktop: persistent left sidebar (no top header).
+ * Mobile: header with logo drawer trigger + club switcher, horizontal nav,
+ *         and a drawer that reuses the sidebar navigation.
  */
 
 import { useEffect } from 'react'
@@ -21,25 +15,24 @@ import {
   AppShellMain,
   Group,
   Title,
-  Burger,
   Drawer,
+  Image,
+  UnstyledButton,
+  Box,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useTelegramEnvironment } from '../hooks'
 import { applyTelegramThemeVariables, backgroundSurfaces } from '../styles'
 import { Navigation } from './Navigation'
-// ColorScheme switcher - temporarily disabled, Dark mode is default
-// import { ThemeToggle } from './ThemeToggle'
+import { ClubSwitcher } from './ClubSwitcher'
+import { MobileHorizontalNav } from './MobileHorizontalNav'
+import { LastClubSync } from './LastClubSync'
 import { BackgroundVideo } from './BackgroundVideo'
 import { useTelegramAuth } from '../auth/useTelegramAuth'
+import { navAccent } from './navTheme'
 
 /**
  * Root layout component.
- *
- * Wraps all child routes with the application shell.
- * Handles Telegram environment initialization and theme application.
- * Telegram authentication is handled by useTelegramAuth hook.
- * BackgroundVideo is always rendered and persists across navigation.
  */
 export function RootLayout() {
   const location = useLocation()
@@ -50,25 +43,26 @@ export function RootLayout() {
   const hideAppNav =
     location.pathname === '/login' || location.pathname === '/register'
 
-  // Initialize Telegram authentication (hook handles deduplication)
   useTelegramAuth()
 
   useEffect(() => {
-    // Apply Telegram theme if available, otherwise use default theme
     if (telegramEnv.isTelegram && telegramEnv.webApp?.theme) {
       applyTelegramThemeVariables({
         bgColor: telegramEnv.webApp.theme.bgColor,
         textColor: telegramEnv.webApp.theme.textColor,
       })
     } else {
-      // Standard Web mode — use default theme
       applyTelegramThemeVariables(undefined)
     }
   }, [telegramEnv])
 
+  // Close drawer on route change
+  useEffect(() => {
+    closeDrawer()
+  }, [location.pathname, closeDrawer])
+
   return (
     <>
-      {/* Background video - persistent across all navigation, including landing */}
       <BackgroundVideo />
 
       {isLanding ? (
@@ -76,45 +70,68 @@ export function RootLayout() {
           <Outlet />
         </div>
       ) : (
-        /* App shell wrapper - ensures all UI is above background video */
         <div style={{ position: 'relative', zIndex: 1, height: '100vh' }}>
+          {!hideAppNav && <LastClubSync />}
           <AppShell
-            header={{ height: 64 }}
+            header={{ height: { base: 56, sm: 0 } }}
             navbar={{
-              width: 260,
+              width: 272,
               breakpoint: 'sm',
               collapsed: { mobile: true, desktop: hideAppNav },
             }}
             padding={0}
           >
-            <AppShellHeader bg={backgroundSurfaces.header}>
-              <Group h="100%" px="md" justify="space-between" align="center">
-                <Group gap="sm">
-                  {!hideAppNav && (
-                    <Burger
-                      opened={drawerOpened}
+            {!hideAppNav && (
+              <AppShellHeader
+                bg={backgroundSurfaces.header}
+                hiddenFrom="sm"
+                style={{ borderBottom: `1px solid ${navAccent.border}` }}
+              >
+                <Group h="100%" px="sm" justify="space-between" wrap="nowrap">
+                  <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                    <UnstyledButton
                       onClick={openDrawer}
-                      size="sm"
-                      hiddenFrom="sm"
                       aria-label="Open navigation"
-                    />
-                  )}
-                  <Title order={3} fw={600}>
-                    Poker Club
-                  </Title>
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Image
+                        src="/landing/logo/logo.png"
+                        alt="Poker Club"
+                        w={28}
+                        h={28}
+                        fit="contain"
+                      />
+                    </UnstyledButton>
+                    <Title order={4} fw={600} style={{ whiteSpace: 'nowrap' }}>
+                      Poker Club
+                    </Title>
+                  </Group>
+                  <Box style={{ maxWidth: 160, minWidth: 0, flexShrink: 1 }}>
+                    <ClubSwitcher compact />
+                  </Box>
                 </Group>
-                {/* ColorScheme switcher - temporarily disabled, Dark mode is default */}
-                {/* <ThemeToggle /> */}
-              </Group>
-            </AppShellHeader>
+              </AppShellHeader>
+            )}
 
             {!hideAppNav && (
-              <AppShellNavbar bg={backgroundSurfaces.navbar}>
+              <AppShellNavbar
+                bg={navAccent.panel}
+                visibleFrom="sm"
+                style={{ borderRight: `1px solid ${navAccent.border}` }}
+              >
                 <Navigation />
               </AppShellNavbar>
             )}
 
             <AppShellMain bg={backgroundSurfaces.main}>
+              {!hideAppNav && <MobileHorizontalNav />}
               <Outlet />
             </AppShellMain>
 
@@ -122,16 +139,19 @@ export function RootLayout() {
               <Drawer
                 opened={drawerOpened}
                 onClose={closeDrawer}
-                title="Navigation"
+                title={null}
+                withCloseButton={false}
                 styles={{
-                  content: { backgroundColor: backgroundSurfaces.drawer },
+                  content: { backgroundColor: navAccent.panel },
+                  body: { padding: 0, height: '100%' },
+                  header: { display: 'none' },
                 }}
-                size={260}
-                padding="md"
+                size={280}
+                padding={0}
                 zIndex={1000}
                 hiddenFrom="sm"
               >
-                <Navigation onNavigate={closeDrawer} />
+                <Navigation onNavigate={closeDrawer} showBrand />
               </Drawer>
             )}
           </AppShell>

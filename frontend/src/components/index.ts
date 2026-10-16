@@ -6,6 +6,9 @@
 
 export { RootLayout } from './RootLayout'
 export { Navigation } from './Navigation'
+export { ClubSwitcher } from './ClubSwitcher'
+export { MobileHorizontalNav } from './MobileHorizontalNav'
+export { LastClubSync } from './LastClubSync'
 export { ThemeToggle } from './ThemeToggle'
 export { ClubLayout } from './ClubLayout'
 export { LoadingState, InlineLoading } from './LoadingState'
