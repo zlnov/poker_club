@@ -65,7 +65,8 @@ const SCENARIO_STEPS = [
   },
 ] as const
 
-const SCENARIO_PREVIEW_SCALE = 4
+/** Shared lightbox scale for Hero and «Как это работает». */
+const IMAGE_PREVIEW_SCALE = 4
 const SCENARIO_SHOT_MAX_H_MOBILE = 360
 const SCENARIO_SHOT_MAX_H_DESKTOP = 480
 const SCENARIO_STEPS_WIDTH = 260
@@ -150,25 +151,29 @@ const HERO_SHOTS = [
     src: '/landing/block1/sshot-dash.png',
     className: 'shotMain',
     label: 'Дашборд клуба',
-    previewScale: 3,
+    imageWidth: 1135,
+    imageHeight: 1797,
   },
   {
     src: '/landing/block1/sshot-stat.png',
     className: 'shotTop',
     label: 'Статистика',
-    previewScale: 5,
+    imageWidth: 1133,
+    imageHeight: 2012,
   },
   {
     src: '/landing/block1/sshot-games.png',
     className: 'shotLeft',
     label: 'Список игр',
-    previewScale: 5,
+    imageWidth: 1136,
+    imageHeight: 1845,
   },
   {
     src: '/landing/block1/sshot-members.png',
     className: 'shotRight',
     label: 'Участники клуба',
-    previewScale: 5,
+    imageWidth: 1134,
+    imageHeight: 1775,
   },
 ] as const
 const IMAGE_FLIP_MS = 380
@@ -256,16 +261,24 @@ export function LandingPage() {
   const openImagePreview = (
     src: string,
     label: string,
-    previewScale: number,
     target: HTMLElement,
+    imageWidth: number,
+    imageHeight: number,
   ) => {
     if (imagePreviewRef.current) return
 
     const rect = target.getBoundingClientRect()
     const maxWidth = window.innerWidth * 0.92
     const maxHeight = window.innerHeight * 0.88
-    const scaledWidth = rect.width * previewScale
-    const scaledHeight = rect.height * previewScale
+
+    // Size from the on-screen image (cover-fit into the thumb), not the thumb
+    // box aspect — keeps Hero collage shots aligned with scenario previews.
+    const coverFit = Math.max(
+      rect.width / Math.max(imageWidth, 1),
+      rect.height / Math.max(imageHeight, 1),
+    )
+    const scaledWidth = imageWidth * coverFit * IMAGE_PREVIEW_SCALE
+    const scaledHeight = imageHeight * coverFit * IMAGE_PREVIEW_SCALE
     const fit = Math.min(1, maxWidth / scaledWidth, maxHeight / scaledHeight)
 
     imageClosingRef.current = false
@@ -578,8 +591,9 @@ export function LandingPage() {
                         openImagePreview(
                           shot.src,
                           shot.label,
-                          shot.previewScale,
                           event.currentTarget,
+                          shot.imageWidth,
+                          shot.imageHeight,
                         )
                       }
                     >
@@ -726,8 +740,9 @@ export function LandingPage() {
                   openImagePreview(
                     activeScenario.image,
                     activeScenario.label,
-                    SCENARIO_PREVIEW_SCALE,
                     event.currentTarget,
+                    activeScenario.imageWidth,
+                    activeScenario.imageHeight,
                   )
                 }
               >
