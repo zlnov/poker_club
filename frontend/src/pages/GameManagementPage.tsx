@@ -61,6 +61,53 @@ function formatMemberName(member: ClubMemberRole): string {
 }
 
 /**
+ * Formats a profit value: positive without +, negative with -.
+ */
+function formatProfit(value: number): string {
+  if (isNaN(value)) {
+    return '—'
+  }
+  const formatted = Math.round(Math.abs(value)).toString()
+  return value < 0 ? `-${formatted}` : formatted
+}
+
+/**
+ * Renders a profit value with green (positive) / red (negative) color.
+ */
+function ProfitValue({
+  profit,
+  size = 'sm',
+  fw,
+}: {
+  profit: number | undefined
+  size?: 'xs' | 'sm'
+  fw?: number
+}) {
+  if (profit === undefined) {
+    return '—'
+  }
+  if (profit > 0) {
+    return (
+      <Text c="green" size={size} fw={fw ?? 500}>
+        {formatProfit(profit)}
+      </Text>
+    )
+  }
+  if (profit < 0) {
+    return (
+      <Text c="red" size={size} fw={fw ?? 500}>
+        {formatProfit(profit)}
+      </Text>
+    )
+  }
+  return (
+    <Text size={size} fw={fw}>
+      {formatProfit(profit)}
+    </Text>
+  )
+}
+
+/**
  * Game Management page.
  *
  * Displays:
@@ -484,6 +531,7 @@ export function GameManagementPage() {
                 <Table.Th ta="center">Invested</Table.Th>
                 <Table.Th ta="center">Chips End</Table.Th>
                 <Table.Th ta="center">Payout</Table.Th>
+                <Table.Th ta="center">Profit</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -491,10 +539,16 @@ export function GameManagementPage() {
                 const invested =
                   p.buyInCount * game.buyInAmount +
                   p.rebuyCount * (game.rebuyPrice ?? 0)
-                const payout =
+                const payoutAmount =
                   p.chipsEnd !== undefined
-                    ? Math.round(p.chipsEnd * game.chipValue)
-                    : '—'
+                    ? p.chipsEnd * game.chipValue
+                    : undefined
+                const payout =
+                  payoutAmount !== undefined ? Math.round(payoutAmount) : '—'
+                const profit =
+                  payoutAmount !== undefined
+                    ? payoutAmount - invested
+                    : undefined
                 return (
                   <Table.Tr key={p.player.id}>
                     <Table.Td>
@@ -514,6 +568,9 @@ export function GameManagementPage() {
                       {p.chipsEnd !== undefined ? Math.round(p.chipsEnd) : '—'}
                     </Table.Td>
                     <Table.Td ta="center">{payout}</Table.Td>
+                    <Table.Td ta="center">
+                      <ProfitValue profit={profit} />
+                    </Table.Td>
                   </Table.Tr>
                 )
               })}
@@ -550,6 +607,9 @@ export function GameManagementPage() {
                 <Table.Td fw={700} ta="center">
                   {Math.round(bankCheck.totalPayout)}
                 </Table.Td>
+                <Table.Td fw={700} ta="center">
+                  <ProfitValue profit={bankCheck.difference} fw={700} />
+                </Table.Td>
               </Table.Tr>
             </Table.Tbody>
           </Table>
@@ -562,10 +622,16 @@ export function GameManagementPage() {
               const invested =
                 p.buyInCount * game.buyInAmount +
                 p.rebuyCount * (game.rebuyPrice ?? 0)
-              const payout =
+              const payoutAmount =
                 p.chipsEnd !== undefined
-                  ? Math.round(p.chipsEnd * game.chipValue)
-                  : '—'
+                  ? p.chipsEnd * game.chipValue
+                  : undefined
+              const payout =
+                payoutAmount !== undefined ? Math.round(payoutAmount) : '—'
+              const profit =
+                payoutAmount !== undefined
+                  ? payoutAmount - invested
+                  : undefined
               const playerName =
                 [p.player.firstName, p.player.lastName]
                   .filter(Boolean)
@@ -642,6 +708,30 @@ export function GameManagementPage() {
                           {p.chipsEnd !== undefined
                             ? Math.round(p.chipsEnd)
                             : '—'}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Table.Tbody>
+                  </Table>
+
+                  {/* Row 3: Profit (full width) */}
+                  <Table
+                    variant="compact"
+                    mt="xs"
+                    styles={{
+                      td: { padding: '0.1rem' },
+                    }}
+                  >
+                    <Table.Tbody>
+                      <Table.Tr>
+                        <Table.Td ta="center">
+                          <Text size="xs" c="dimmed">
+                            Profit
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                      <Table.Tr>
+                        <Table.Td ta="center">
+                          <ProfitValue profit={profit} size="sm" />
                         </Table.Td>
                       </Table.Tr>
                     </Table.Tbody>
