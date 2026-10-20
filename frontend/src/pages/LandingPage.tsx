@@ -31,7 +31,7 @@ const SCENARIO_STEPS = [
     label: 'Создание игры',
     hint: 'Соберите игроков за столом',
     title: 'Соберите игроков за столом',
-    text: 'Создайте игру в клубе, задайте параметры и добавьте участников. Организатор начинает работу с одной записи игры, а не с разрозненных сообщений и заметок.',
+    text: 'Создайте игру в клубе, задайте параметры и добавьте участников. Администратор управляет игрой в одном месте, без необходимости собирать информацию из сообщений и заметок.',
     image: '/landing/block3/1-create-game.png',
     imageWidth: 688,
     imageHeight: 1217,
@@ -455,7 +455,7 @@ export function LandingPage() {
               width={36}
               height={36}
             />
-            <span className={styles.brandName}>Poker Club</span>
+            <span className={styles.brandName}>Home Poker Club</span>
           </a>
 
           <nav className={styles.nav} aria-label="Разделы страницы">
@@ -528,7 +528,7 @@ export function LandingPage() {
         <section className={styles.hero} aria-labelledby="hero-title">
           <div className={styles.heroInner}>
             <div className={styles.heroCopy}>
-              <span className={styles.eyebrow}>Организация покерного клуба</span>
+              <span className={styles.eyebrow}>Создание домашнего покерного клуба</span>
               <h1 id="hero-title" className={styles.heroTitle}>
                 Ваш клуб. Ваши игры.{' '}
                 <span className={styles.heroTitleAccent}>
@@ -536,8 +536,8 @@ export function LandingPage() {
                 </span>
               </h1>
               <p className={styles.heroLead}>
-                Poker Club помогает организовывать покерные игры, вести учёт
-                результатов и сохранять историю клуба.
+                Home Poker Club помогает проводить покерные игры, вести учёт
+                результатов и сохранять историю игр клуба.
               </p>
               <div className={styles.heroActions}>
                 <Link to="/register" className={styles.btnPrimary}>
@@ -648,12 +648,12 @@ export function LandingPage() {
         >
           <div className={styles.sectionInner}>
             <div className={styles.sectionHeader}>
-              <span className={styles.eyebrow}>Зачем нужен Poker Club</span>
+              <span className={styles.eyebrow}>Зачем нужен Home Poker Club</span>
               <h2 id="features-title" className={styles.sectionTitle}>
                 Меньше ручной работы. Больше порядка в клубе
               </h2>
               <p className={styles.sectionLead}>
-                Всё необходимое для организации игр и учёта результатов — в одном
+                Всё необходимое для игр и учёта результатов — в одном
                 месте.
               </p>
             </div>
@@ -693,7 +693,7 @@ export function LandingPage() {
                 От первой раздачи до итоговой статистики
               </h2>
               <p className={styles.sectionLead}>
-                Весь процесс организации игры — от создания до анализа
+                Весь процесс игры — от создания до анализа
                 результатов — в одном приложении.
               </p>
             </div>
@@ -869,9 +869,9 @@ export function LandingPage() {
         <div className={styles.footerInner}>
           <div className={styles.footerGrid}>
             <div>
-              <p className={styles.footerBrandName}>Poker Club</p>
+              <p className={styles.footerBrandName}>Home Poker Club</p>
               <p className={styles.footerBrandText}>
-                Инструмент для организации покерного клуба и учёта результатов
+                Инструмент для создания домашнего покерного клуба и учёта результатов
                 игр.
               </p>
             </div>
@@ -912,7 +912,7 @@ export function LandingPage() {
           </div>
 
           <div className={styles.footerBottom}>
-            <span>© 2026 Poker Club</span>
+            <span>© 2026 Home Poker Club</span>
           </div>
         </div>
       </footer>
