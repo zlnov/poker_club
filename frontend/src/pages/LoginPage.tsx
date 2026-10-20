@@ -178,9 +178,9 @@ export function LoginPage() {
           <img
             src="/landing/logo/logo-auth.png"
             alt=""
-            width={192}
+            width={250}
             height={192}
-            style={{ width: 192, height: 192, objectFit: 'contain' }}
+            style={{ width: 250, height: 192, objectFit: 'contain' }}
           />
           <Title order={1} ta="center">
             Poker Club
