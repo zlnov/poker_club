@@ -8,7 +8,9 @@
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Telegram Web Apps SDK is loaded asynchronously by the app
+         (see src/telegram/loadSdk.ts) so a blocked telegram.org cannot
+         delay Standard Web boot. -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

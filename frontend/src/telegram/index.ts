@@ -217,4 +217,17 @@ export {
   TelegramEnvironmentContext,
   TelegramEnvironmentProvider,
   useTelegramEnvironmentContext,
+  type TelegramEnvironmentContextValue,
 } from './TelegramEnvironmentContext'
+
+// Re-export async Web Apps SDK loader (not Telegram Login / OIDC)
+export {
+  loadTelegramWebAppSdk,
+  retryTelegramWebAppSdk,
+  onTelegramWebAppSdkReady,
+  isTelegramWebAppSdkPresent,
+  TELEGRAM_WEB_APP_SDK_SRC,
+  TELEGRAM_WEB_APP_SDK_TIMEOUT_MS,
+  type TelegramSdkLoadResult,
+  type TelegramSdkStatus,
+} from './loadSdk'
