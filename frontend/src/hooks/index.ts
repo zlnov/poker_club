@@ -12,7 +12,7 @@ import { useMemo, useContext } from 'react'
 import { getEnvironment, type EnvironmentConfig } from '../env'
 import type { ApiClient } from '../api'
 import {
-  type TelegramEnvironmentInfo,
+  type TelegramEnvironmentContextValue,
   useTelegramEnvironmentContext,
 } from '../telegram'
 import { ApiClientContext } from '../auth/ApiClientContext'
@@ -47,18 +47,19 @@ export function useApiClient(): ApiClient {
  * Hook that detects the Telegram environment.
  *
  * Returns information about whether the app is running in:
- * - Telegram Mini App mode (window.Telegram.WebApp is available)
- * - Standard Web mode (no Telegram WebApp API)
+ * - Telegram Mini App mode (WebApp API + non-empty initData)
+ * - Standard Web mode (otherwise)
+ *
+ * Also exposes `sdkStatus` and `retryTelegramSdk` for the async Web Apps
+ * SDK loader. `sdkStatus` is independent of `isTelegram`.
  *
  * The hook safely handles the absence of the Telegram WebApp API
  * and never throws (see 04_FE_SPEC.md section 7).
  *
  * This hook reads from the shared `TelegramEnvironmentContext`,
  * ensuring all components see the same environment state.
- * The context provider handles polling for the Telegram WebApp API
- * availability.
  */
-export function useTelegramEnvironment(): TelegramEnvironmentInfo {
+export function useTelegramEnvironment(): TelegramEnvironmentContextValue {
   return useTelegramEnvironmentContext()
 }
 

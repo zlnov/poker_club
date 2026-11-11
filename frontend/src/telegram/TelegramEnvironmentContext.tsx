@@ -6,21 +6,44 @@
  * that calls `useTelegramEnvironment()` would have its own independent
  * state and polling, leading to inconsistent `isTelegram` values.
  *
+ * SDK loading is asynchronous and non-blocking: the app always starts in
+ * Standard Web mode, then upgrades to Mini App if WebApp + initData appear.
+ *
  * See 04_FE_SPEC.md section 6 (Telegram Integration Layer).
  */
 
 import {
   createContext,
+  useCallback,
   useContext,
-  useState,
   useEffect,
-  ReactNode,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
 } from 'react'
+import { createTelegramEnvironment, type TelegramEnvironmentInfo } from './index'
+import { getTelegramWebApp } from './webApp'
 import {
-  createTelegramEnvironment,
-  getTelegramWebApp,
-  type TelegramEnvironmentInfo,
-} from './index'
+  loadTelegramWebAppSdk,
+  onTelegramWebAppSdkReady,
+  retryTelegramWebAppSdk,
+  TELEGRAM_WEB_APP_SDK_TIMEOUT_MS,
+  type TelegramSdkLoadResult,
+  type TelegramSdkStatus,
+} from './loadSdk'
+
+const POLL_INTERVAL_MS = 100
+
+export interface TelegramEnvironmentContextValue extends TelegramEnvironmentInfo {
+  /** Independent of `isTelegram` — reflects SDK script load lifecycle. */
+  sdkStatus: TelegramSdkStatus
+  /**
+   * Explicitly retry SDK load after `failed` or `timed_out`.
+   * Safe to call anytime; no-ops when SDK is already ready.
+   */
+  retryTelegramSdk: () => Promise<TelegramSdkLoadResult>
+}
 
 /**
  * Context for sharing Telegram environment state across the application.
@@ -28,63 +51,146 @@ import {
  * `useTelegramEnvironmentContext()`.
  */
 export const TelegramEnvironmentContext =
-  createContext<TelegramEnvironmentInfo | null>(null)
+  createContext<TelegramEnvironmentContextValue | null>(null)
+
+function readEnvironment(): TelegramEnvironmentInfo {
+  return createTelegramEnvironment(getTelegramWebApp())
+}
 
 /**
  * Provider that detects the Telegram environment and shares it via context.
  *
- * On mount, it checks for `window.Telegram.WebApp` synchronously.
- * If not available, it polls every 100ms until the API is detected
- * or the component unmounts.
- *
- * Once the WebApp API is detected, it continues polling for `initData`
- * availability, since `initData` may not be populated immediately
- * even after the WebApp API object exists.
- *
- * In Telegram Mini App, the WebApp API and initData may be injected
- * asynchronously after the initial render. Polling ensures detection.
+ * Boot behaviour:
+ * 1. Starts immediately as Standard Web (does not block on SDK).
+ * 2. Kicks off async SDK load with timeout.
+ * 3. Polls for WebApp + initData for a bounded window (2–5s).
+ * 4. After timeout/failure, still accepts late SDK readiness and updates env.
+ * 5. Exposes `retryTelegramSdk` for explicit Mini App recovery (no auto-loop).
  */
 export function TelegramEnvironmentProvider({
   children,
 }: {
   children: ReactNode
 }) {
-  const [env, setEnv] = useState<TelegramEnvironmentInfo>(() => {
-    const webApp = getTelegramWebApp()
-    return createTelegramEnvironment(webApp)
-  })
+  const [env, setEnv] = useState<TelegramEnvironmentInfo>(() =>
+    readEnvironment(),
+  )
+  // Start as `loading` when SDK is absent so first paint does not flash `idle`
+  // and the mount effect does not need a synchronous setState.
+  const [sdkStatus, setSdkStatus] = useState<TelegramSdkStatus>(() =>
+    getTelegramWebApp() ? 'ready' : 'loading',
+  )
+  const envRef = useRef(env)
 
   useEffect(() => {
-    // If already detected Telegram with initData, no need to poll
+    envRef.current = env
+  }, [env])
+
+  const syncEnvironment = useCallback(() => {
+    const next = readEnvironment()
+    const prev = envRef.current
+    if (
+      prev.isTelegram !== next.isTelegram ||
+      prev.webApp?.initData !== next.webApp?.initData ||
+      prev.environment !== next.environment
+    ) {
+      setEnv(next)
+    }
+  }, [])
+
+  const retryTelegramSdk = useCallback(async () => {
+    setSdkStatus('loading')
+    const result = await retryTelegramWebAppSdk({
+      timeoutMs: TELEGRAM_WEB_APP_SDK_TIMEOUT_MS,
+    })
+    setSdkStatus(result === 'ready' ? 'ready' : result)
+    syncEnvironment()
+    return result
+  }, [syncEnvironment])
+
+  // Async SDK load on mount — never blocks first paint / React boot.
+  useEffect(() => {
+    if (getTelegramWebApp()) {
+      syncEnvironment()
+      return
+    }
+
+    let cancelled = false
+
+    void loadTelegramWebAppSdk({
+      timeoutMs: TELEGRAM_WEB_APP_SDK_TIMEOUT_MS,
+      onSettled: (result) => {
+        if (cancelled) {
+          return
+        }
+        setSdkStatus(result === 'ready' ? 'ready' : result)
+        if (result === 'ready') {
+          syncEnvironment()
+        }
+      },
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [syncEnvironment])
+
+  // Late readiness after timed_out / failed (script finishes later, or retry).
+  useEffect(() => {
+    return onTelegramWebAppSdkReady(() => {
+      setSdkStatus('ready')
+      syncEnvironment()
+    })
+  }, [syncEnvironment])
+
+  // Bounded polling for WebApp API and initData during the detection window.
+  // Also runs a short window after retry when status returns to loading.
+  useEffect(() => {
     if (env.isTelegram && env.webApp?.initData) {
       return
     }
 
-    // Poll for Telegram WebApp API availability and initData
-    const interval = setInterval(() => {
-      const webApp = getTelegramWebApp()
-      if (webApp) {
-        const newEnv = createTelegramEnvironment(webApp)
-        // Update state if Telegram was just detected, or if initData became available
-        if (
-          !env.isTelegram ||
-          (!env.webApp?.initData && newEnv.webApp?.initData)
-        ) {
-          setEnv(newEnv)
-        }
-        // Stop polling once we have both Telegram and initData
-        if (newEnv.isTelegram && newEnv.webApp?.initData) {
-          clearInterval(interval)
-        }
+    if (sdkStatus !== 'loading' && sdkStatus !== 'ready') {
+      // After timeout/failure, rely on onTelegramWebAppSdkReady + explicit retry
+      // rather than unbounded polling.
+      // One immediate sync covers a race where SDK arrived between status updates.
+      if (sdkStatus === 'timed_out' || sdkStatus === 'failed') {
+        syncEnvironment()
       }
-    }, 100)
+      return
+    }
 
-    // Clean up on unmount
-    return () => clearInterval(interval)
-  }, [env.isTelegram, env.webApp?.initData])
+    const startedAt = Date.now()
+    const interval = window.setInterval(() => {
+      syncEnvironment()
+
+      const current = envRef.current
+      if (current.isTelegram && current.webApp?.initData) {
+        window.clearInterval(interval)
+        return
+      }
+
+      if (Date.now() - startedAt >= TELEGRAM_WEB_APP_SDK_TIMEOUT_MS) {
+        window.clearInterval(interval)
+      }
+    }, POLL_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [env.isTelegram, env.webApp?.initData, sdkStatus, syncEnvironment])
+
+  const value = useMemo<TelegramEnvironmentContextValue>(
+    () => ({
+      ...env,
+      sdkStatus,
+      retryTelegramSdk,
+    }),
+    [env, sdkStatus, retryTelegramSdk],
+  )
 
   return (
-    <TelegramEnvironmentContext.Provider value={env}>
+    <TelegramEnvironmentContext.Provider value={value}>
       {children}
     </TelegramEnvironmentContext.Provider>
   )
@@ -94,9 +200,9 @@ export function TelegramEnvironmentProvider({
  * Hook to access the shared Telegram environment context.
  *
  * Must be used within a `TelegramEnvironmentProvider`.
- * Returns the current Telegram environment info.
+ * Returns the current Telegram environment info plus SDK load status.
  */
-export function useTelegramEnvironmentContext(): TelegramEnvironmentInfo {
+export function useTelegramEnvironmentContext(): TelegramEnvironmentContextValue {
   const context = useContext(TelegramEnvironmentContext)
   if (!context) {
     throw new Error(
